@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: gateway-server
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+    gateway:
+      discovery:
+        locator:
+          enabled: true # 开启服务发现自动路由
+  config:
+    import: optional:nacos:localhost:8848
+  main:
+    web-application-type: reactive
+server:
+  port: 8080
