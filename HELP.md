@@ -1,6 +1,6 @@
 # 随笔
 
-## nacos连接达梦数据库的坑
+## nacos连接达梦数据库
 
 nacos默认使用本地数据库derby，如果要连接达梦数据库，则需要下载官方插件源码。
 比较坑的是官方插件维护得不咋地（豆包也是傻傻搞不定的），代码和文档都有所欠缺，和nacos的版本对应感觉有点乱。
@@ -13,3 +13,60 @@ nacos默认使用本地数据库derby，如果要连接达梦数据库，则需�
 插件源码要下载v2-develop分支。
 
 **以后遇到问题要看官方的issue，有人遇到了同样的问题，并且给了答案**
+
+## powerjob连接达梦数据库
+
+源代码克隆下来之后，需要参考官方文档修改powerjob的配置文件，启动后报：
+
+```shell
+Failed to load driver class dm.jdbc.driver.DmDriver
+```
+
+这个报错和nacos连达梦报的一样，那么解决方法大概率也是一样，首先pom文件加上：
+
+
+```shell
+<dependency>
+    <groupId>com.dameng</groupId>
+    <artifactId>DmJdbcDriver18</artifactId>
+    <version>${jdbc.dm.version}</version>
+    <scope>system</scope>
+    <systemPath>${basedir}/lib/DmJdbcDriver18.jar</systemPath>
+</dependency>
+```
+
+接着在项目根目录放上lib/DmJdbcDriver18.jar
+
+配置文件：
+```properties
+####### Database properties(Configure according to the the environment) #######
+spring.datasource.core.driver-class-name=dm.jdbc.driver.DmDriver
+spring.datasource.core.jdbc-url=jdbc:dm://127.0.0.1:5236/powerjob-schema
+spring.datasource.core.username=SYSDBA
+spring.datasource.core.password=Huang@2020
+spring.datasource.core.maximum-pool-size=20
+spring.datasource.core.minimum-idle=5
+```
+
+由于是在idea中运行powerjob server，还需要在模块设置->依赖中加入DmJdbcDriver18.jar所在的目录，否则报错：
+```shell
+Failed to load driver class dm.jdbc.driver.DmDriver in either of HikariConfig class loader or Thread context classloader
+```
+
+如果不引入方言的配置会报错，引入也报错：
+```shell
+Unable to load class [org.hibernate.dialect.DmDialect]
+```
+
+需要引入方言的依赖：
+```shell
+<dependency>
+    <groupId>com.dameng</groupId>
+    <artifactId>DmDialect-for-hibernate5.6</artifactId>
+    <version>${jdbc.dm.version}</version>
+</dependency>
+```
+
+启动成功后，访问 http://127.0.0.1:7700/
+
+账号 ADMIN，密码 powerjob_admin
