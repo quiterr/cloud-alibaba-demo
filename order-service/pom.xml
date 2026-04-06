@@ -72,6 +72,66 @@
             <artifactId>powerjob-worker-spring-boot-starter</artifactId>
             <version>4.3.8</version>
         </dependency>
+
+        <!-- Shiro -->
+<!--        <dependency>-->
+<!--            <groupId>org.apache.shiro</groupId>-->
+<!--            <artifactId>shiro-spring-boot-starter</artifactId>-->
+<!--            <scope>compile</scope>-->
+<!--            <classifier>jakarta</classifier>-->
+<!--            <version>2.1.0</version>-->
+<!--            <exclusions>-->
+<!--                <exclusion>-->
+<!--                    <groupId>org.apache.shiro</groupId>-->
+<!--                    <artifactId>shiro-crypto-cipher</artifactId>-->
+<!--                </exclusion>-->
+<!--                <exclusion>-->
+<!--                    <groupId>org.apache.shiro</groupId>-->
+<!--                    <artifactId>shiro-crypto-hash</artifactId>-->
+<!--                </exclusion>-->
+<!--                <exclusion>-->
+<!--                    <groupId>org.apache.shiro</groupId>-->
+<!--                    <artifactId>shiro-web</artifactId>-->
+<!--                </exclusion>-->
+<!--                <exclusion>-->
+<!--                    <groupId>org.apache.shiro</groupId>-->
+<!--                    <artifactId>shiro-spring</artifactId>-->
+<!--                </exclusion>-->
+<!--            </exclusions>-->
+<!--        </dependency>-->
+        <dependency>
+            <groupId>org.apache.shiro</groupId>
+            <artifactId>shiro-spring-boot-starter</artifactId>
+            <classifier>jakarta</classifier>
+            <version>2.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shiro</groupId>
+            <artifactId>shiro-spring-boot-web-starter</artifactId>
+            <classifier>jakarta</classifier>
+            <version>2.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shiro</groupId>
+            <artifactId>shiro-web</artifactId>
+            <classifier>jakarta</classifier>
+            <version>2.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shiro</groupId>
+            <artifactId>shiro-core</artifactId>
+            <classifier>jakarta</classifier>
+            <version>2.1.0</version>
+        </dependency>
+
+
+        <!--        <dependency>-->
+<!--            <groupId>jakarta.servlet</groupId>-->
+<!--            <artifactId>jakarta.servlet-api</artifactId>-->
+<!--            <version>6.1.0</version>-->
+<!--            <scope>provided</scope>-->
+<!--        </dependency>-->
+
     </dependencies>
 
     <build>
@@ -79,6 +139,9 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <skip>false</skip>
+                </configuration>
             </plugin>
         </plugins>
     </build>
