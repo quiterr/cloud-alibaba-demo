@@ -1,5 +1,33 @@
 # 随笔
 
+## 启动命令
+
+1、idea中启动nacos
+```shell
+cd nacos dir
+./startup.cmd -m standalone
+```
+
+2、启动powerjob：idea打开powerjob项目，找到powerjob-server-starter，启动主程序。
+
+## 测试微服务
+
+测试用户服务
+```shell
+http://localhost:8081/user/1
+```
+
+测试订单服务
+```shell
+http://localhost:8082/order/getUser/1
+```
+
+测试网关服务
+```shell
+http://localhost:8080/user-service/user/1
+http://localhost:8080/order-service/order/getUser/1
+```
+
 ## nacos连接达梦数据库
 
 nacos默认使用本地数据库derby，如果要连接达梦数据库，则需要下载官方插件源码。
