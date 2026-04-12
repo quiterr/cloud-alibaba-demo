@@ -1,0 +1,3 @@
+#spring:
+#  config:
+#    import: optional:nacos:localhost:8848

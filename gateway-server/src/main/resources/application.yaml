@@ -2,15 +2,17 @@ spring:
   application:
     name: gateway-server
   cloud:
-    nacos:
-      discovery:
-        server-addr: 127.0.0.1:8848
     gateway:
       discovery:
         locator:
           enabled: true # 开启服务发现自动路由
+    nacos:
+      discovery:
+        server-addr: 192.168.133.1:8848
   config:
-    import: optional:nacos:localhost:8848
+    import: optional:nacos:${spring.cloud.nacos.discovery.server-addr}
+    file-extension: yaml
+    refresh-enabled: true
   main:
     web-application-type: reactive
 server:

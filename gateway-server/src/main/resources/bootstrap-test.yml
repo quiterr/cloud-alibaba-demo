@@ -1,0 +1,7 @@
+#spring:
+#  cloud:
+#    nacos:
+#      discovery:
+#        server-addr: 192.168.133.1:8848
+#  config:
+#    import: optional:nacos:${spring.cloud.nacos.discovery.server-addr}

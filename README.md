@@ -1,5 +1,8 @@
 # 随笔
 
+## 账号
+1、家里虚拟机root账号：Huang@2020
+
 ## 启动命令
 
 1、idea中启动nacos
@@ -12,7 +15,7 @@ cd nacos dir
 
 ## 测试微服务
 
-测试用户服务
+测试用户服务 
 ```shell
 http://localhost:8081/user/1
 ```
@@ -447,3 +450,303 @@ kubectl delete pod -n kube-system -l app=flannel
 NAME        STATUS   ROLES           AGE   VERSION
 k8s-node1   Ready    control-plane   15m   v1.28.0
 ```
+
+## 将微服务部署到k8s
+
+在虚拟机中创建gateway目录，把jar包、依赖包都放进入，然后创建gateway-deploy.yaml
+```shell
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      # 直接用官方JDK镜像，不用你自己构建！
+      containers:
+      - name: gateway
+        image: openjdk:17-jdk-slim
+        workingDir: /app
+        command: ["java", "-jar", "gateway.jar"]
+        ports:
+        - containerPort: 8080
+
+        # 把你服务器上的 jar 和 yml 直接挂载进容器！
+        volumeMounts:
+        - name: app-files
+          mountPath: /app
+
+      volumes:
+      - name: app-files
+        hostPath:
+          # 你服务器 jar 所在的路径！
+          path: /root/gateway
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+spec:
+  type: NodePort
+  ports:
+  - port: 8080
+    nodePort: 30080
+  selector:
+    app: gateway
+```
+
+接着启动gateway
+```shell
+kubectl apply -f gateway-deploy.yaml
+```
+
+检查是否启动成功
+```shell
+kubectl get pods
+```
+只要出现 READY 1/1 → 你的网关服务已经跑在 K8s 上了！
+
+windows上使用浏览器访问
+```shell
+http://192.168.133.129:30080
+```
+
+一般都没这么顺利，报错：
+```shell
+[root@k8s-node1 gateway]# kubectl get pods
+NAME                       READY   STATUS    RESTARTS   AGE
+gateway-6cfcd4d779-9h8jj   0/1     Pending   0          7m23s
+```
+
+查看原因：
+```shell
+[root@k8s-node1 gateway]# kubectl describe pod gateway | grep -A 20 Events
+Events:
+  Type     Reason            Age   From               Message
+  ----     ------            ----  ----               -------
+  Warning  FailedScheduling  62s   default-scheduler  0/1 nodes are available: 1 node(s) had untolerated taint {node-role.kubernetes.io/control-plane: }. preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling..
+```
+逐句翻译
+0/1 nodes are available直译：0 个节点可用，总共有 1 个节点人话：没有机器能用来运行你的 Pod
+1 node(s) had untolerated taint
+taint：污点（K8s 术语，意思是 “这个节点打上了标记，不让普通 Pod 跑上来”）
+untolerated：无法容忍、不接受
+直译：1 个节点带有不能容忍的污点
+人话：你的主节点被加了限制，不让跑业务服务
+{node-role.kubernetes.io/control-plane: }直译：节点角色是控制面（master 节点）人话：这是管理集群的主节点，默认不让跑普通微服务
+preemption: 0/1 nodes are available直译：抢占模式：0/1 节点可用人话：系统尝试 “插队” 也没用
+Preemption is not helpful for scheduling直译：抢占对调度没有帮助人话：实在没机器能跑你这个 Pod
+
+整段合起来一句人话总结：
+你只有一台主节点，K8s 默认规定：主节点只负责管理集群，不允许跑咱们自己的微服务，所以 Pod 一直卡在 Pending，启动不了。
+
+去掉主节点的 “禁止运行普通 Pod” 限制，允许在这台机器上跑微服务。
+```shell
+kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+```
+
+这次显示Successfully assigned default/gateway-d8f979f55-jt4sj to k8s-node1，但又有新报错
+```shell
+[root@k8s-node1 gateway]# kubectl describe pod gateway | grep -A 20 Events
+Events:
+  Type     Reason                  Age                From               Message
+  ----     ------                  ----               ----               -------
+  Warning  FailedScheduling        81s (x3 over 11m)  default-scheduler  0/1 nodes are available: 1 node(s) had untolerated taint {node-role.kubernetes.io/control-plane: }. preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling..
+  Normal   Scheduled               19s                default-scheduler  Successfully assigned default/gateway-d8f979f55-jt4sj to k8s-node1
+  Warning  FailedCreatePodSandBox  18s                kubelet            Failed to create pod sandbox: rpc error: code = Unknown desc = failed to setup network for sandbox "d94cb20553f83fe848c4e185f6c3dfc49c66efdcb0da88fb1a3b9db234a22e98": plugin type="loopback" failed (add): failed to find plugin "loopback" in path [/opt/cni/bin]
+  Normal   SandboxChanged          4s (x2 over 18s)   kubelet            Pod sandbox changed, it will be killed and re-created.
+```
+
+K8s 要给你的微服务创建网络，但是去 /opt/cni/bin 文件夹里找网络插件，结果文件夹是空的！找不到 loopback 这个插件！
+```shell
+# 1. 创建缺失的CNI插件目录
+mkdir -p /opt/cni/bin
+
+# 2. 下载安装缺失的网络插件（1秒搞定）
+yum install -y containernetworking-plugins
+
+# 3. 重启服务
+systemctl restart kubelet containerd
+```
+
+执行完了还是报一样的错，并且网上查别人的/opt/cni/bin有好多个文件，我的只有flannel。
+最后还是靠豆包：
+我彻底破案了！！！你这是麒麟 V10 超级典型的 BUG！
+我直接告诉你最残酷、最真实的原因：
+你的系统 containernetworking-plugins 确实安装了
+但是！它把文件装到了 /usr/libexec/cni/ 下面，根本没放到 /opt/cni/bin！
+所以你 /opt/cni/bin 里 永远只有 flannel，没有 loopback！
+第一步：找到真正的 CNI 插件位置（系统藏起来了）
+```shell
+ls /usr/libexec/cni/
+```
+
+第二步：直接把它们全部复制到 /opt/cni/bin（永久解决）
+```shell
+cp /usr/libexec/cni/* /opt/cni/bin/
+```
+
+重启服务
+```shell
+systemctl restart containerd kubelet
+kubectl delete pod --all
+```
+
+这次又前进了一步：
+```shell
+[root@k8s-node1 bin]# kubectl get pods
+NAME                      READY   STATUS             RESTARTS   AGE
+gateway-d8f979f55-gtjrc   0/1     ImagePullBackOff   0          15m
+```
+
+报错很明显：
+```shell
+[root@k8s-node1 bin]# kubectl describe pod gateway | grep -A 20 Events
+Events:
+  Type     Reason     Age                 From               Message
+  ----     ------     ----                ----               -------
+  Normal   Scheduled  16m                 default-scheduler  Successfully assigned default/gateway-d8f979f55-gtjrc to k8s-node1
+  Warning  Failed     15m                 kubelet            Failed to pull image "eclipse-temurin:17-jre": failed to pull and unpack image "docker.io/library/eclipse-temurin:17-jre": failed to resolve reference "docker.io/library/eclipse-temurin:17-jre": failed to do request: Head "https://registry-1.docker.io/v2/library/eclipse-temurin/manifests/17-jre": dial tcp 199.96.63.177:443: connect: connection refused
+```
+
+Docker 镜像仓库国内被墙，拉不到 eclipse-temurin:17-jre
+解决办法就是用新的deploy.yml，指定阿里云的源。（豆包一秒解决，记得要用kubectl apply -f deploy.yml重新部署）
+一键清空gateway资源：
+```shell
+kubectl delete deployment gateway
+kubectl delete service gateway
+kubectl delete pod --all --force
+```
+
+## 在服务器上部署微服务
+
+遇到了报错：
+```shell
+[root@k8s-node1 gateway]# java -jar -Dspring.profiles.active=test gateway-server-0.0.1-SNAPSHOT.jar
+2026-04-12T20:37:06.700+08:00 ERROR 271683 --- [remote.worker.1] c.a.n.c.remote.client.grpc.GrpcClient    : Server check fail, please check server 127.0.0.1 ,port 9848 is available , error ={}
+
+java.util.concurrent.ExecutionException: com.alibaba.nacos.shaded.io.grpc.StatusRuntimeException: UNAVAILABLE: io exception
+        at com.alibaba.nacos.shaded.com.google.common.util.concurrent.AbstractFuture.getDoneValue(AbstractFuture.java:592) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.com.google.common.util.concurrent.AbstractFuture.get(AbstractFuture.java:467) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.common.remote.client.grpc.GrpcClient.serverCheck(GrpcClient.java:243) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.common.remote.client.grpc.GrpcClient.connectToServer(GrpcClient.java:367) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.common.remote.client.RpcClient.reconnect(RpcClient.java:502) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.common.remote.client.RpcClient.lambda$start$1(RpcClient.java:329) ~[nacos-client-2.3.2.jar!/:na]
+        at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539) ~[na:na]
+        at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264) ~[na:na]
+        at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:304) ~[na:na]
+        at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136) ~[na:na]
+        at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635) ~[na:na]
+        at java.base/java.lang.Thread.run(Thread.java:833) ~[na:na]
+Caused by: com.alibaba.nacos.shaded.io.grpc.StatusRuntimeException: UNAVAILABLE: io exception
+        at com.alibaba.nacos.shaded.io.grpc.Status.asRuntimeException(Status.java:537) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.stub.ClientCalls$UnaryStreamToFuture.onClose(ClientCalls.java:548) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.internal.DelayedClientCall$DelayedListener$3.run(DelayedClientCall.java:489) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.internal.DelayedClientCall$DelayedListener.delayOrExecute(DelayedClientCall.java:453) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.internal.DelayedClientCall$DelayedListener.onClose(DelayedClientCall.java:486) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.internal.ClientCallImpl.closeObserver(ClientCallImpl.java:567) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.internal.ClientCallImpl.access$300(ClientCallImpl.java:71) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInternal(ClientCallImpl.java:735) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.internal.ClientCallImpl$ClientStreamListenerImpl$1StreamClosed.runInContext(ClientCallImpl.java:716) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133) ~[nacos-client-2.3.2.jar!/:na]
+        ... 3 common frames omitted
+Caused by: com.alibaba.nacos.shaded.io.grpc.netty.shaded.io.netty.channel.AbstractChannel$AnnotatedConnectException: 拒绝连接: /127.0.0.1:9848
+Caused by: java.net.ConnectException: 拒绝连接
+        at java.base/sun.nio.ch.Net.pollConnect(Native Method) ~[na:na]
+        at java.base/sun.nio.ch.Net.pollConnectNow(Net.java:672) ~[na:na]
+        at java.base/sun.nio.ch.SocketChannelImpl.finishConnect(SocketChannelImpl.java:946) ~[na:na]
+        at com.alibaba.nacos.shaded.io.grpc.netty.shaded.io.netty.channel.socket.nio.NioSocketChannel.doFinishConnect(NioSocketChannel.java:337) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.netty.shaded.io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.finishConnect(AbstractNioChannel.java:334) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.netty.shaded.io.netty.channel.nio.NioEventLoop.processSelectedKey(NioEventLoop.java:776) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.netty.shaded.io.netty.channel.nio.NioEventLoop.processSelectedKeysOptimized(NioEventLoop.java:724) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.netty.shaded.io.netty.channel.nio.NioEventLoop.processSelectedKeys(NioEventLoop.java:650) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.netty.shaded.io.netty.channel.nio.NioEventLoop.run(NioEventLoop.java:562) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.netty.shaded.io.netty.util.concurrent.SingleThreadEventExecutor$4.run(SingleThreadEventExecutor.java:997) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.netty.shaded.io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74) ~[nacos-client-2.3.2.jar!/:na]
+        at com.alibaba.nacos.shaded.io.grpc.netty.shaded.io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30) ~[nacos-client-2.3.2.jar!/:na]
+        at java.base/java.lang.Thread.run(Thread.java:833) ~[na:na]
+
+2026-04-12T20:37:06.731+08:00  INFO 271683 --- [remote.worker.1] com.alibaba.nacos.common.remote.client   : [bcd98ce9-fd2f-4317-96ba-11130d4d0597_config-0] Fail to connect server, after trying 4 times, last try server is {serverIp = '127.0.0.1', server main port = 8848}, error = unknown
+2026-04-12T20:37:06.816+08:00  WARN 271683 --- [           main] c.a.c.n.c.NacosConfigDataLoader          : [Nacos Config] config[dataId=192.168.133.1:8848, group=DEFAULT_GROUP] is empty
+2026-04-12T20:37:06.816+08:00  WARN 271683 --- [           main] c.a.c.n.c.NacosConfigDataLoader          : [Nacos Config] config[dataId=192.168.133.1:8848, group=DEFAULT_GROUP] is empty
+```
+
+这个报错比较隐蔽就是容易被下面日志误导：
+```shell
+Caused by: com.alibaba.nacos.shaded.io.grpc.netty.shaded.io.netty.channel.AbstractChannel$AnnotatedConnectException: 拒绝连接: /127.0.0.1:9848
+```
+
+一直朝着127.0.0.1:9948这个方向去解决，尝试了很多方法都不行。
+
+实际关键日志是：
+```shell
+Fail to connect server, after trying 4 times, last try server is {serverIp = '127.0.0.1', server main port = 8848}
+```
+
+把这个日志丢给豆包之后，他马上给出了有效的解决办法
+```shell
+java -jar -Dspring.profiles.active=test -Dspring.cloud.nacos.server-addr=192.168.133.1:8848 -Dspring.cloud.nacos.discovery.server-addr=192.168.133.1:8848 -Dspring.cloud.nacos.config.server-addr=192.168.133.1:8848 gateway-server-0.0.1-SNAPSHOT.jar
+```
+
+**解决了，但是我不理解。因为我已经用-Dspring.profiles.active=test指定了test配置。**
+豆包的解释是（不保证对）：
+Nacos 客户端在 bootstrap 阶段就会初始化！
+它的执行顺序是：
+加载 bootstrap.yml（最优先）
+初始化 Nacos
+然后才去读 spring.profiles.active=test
+最后才读 application.yml
+
+没办法，作为测试，如果我在打包的时候就在bootstrap.yml中指定test环境，是否可以呢？
+答案是不可以，无论怎么搞都是不可以。
+
+而且我发现之前那个命令可一件简化：
+```shell
+```shell
+java -jar -Dspring.cloud.nacos.discovery.server-addr=192.168.133.1:8848 -Dspring.cloud.nacos.config.server-addr=192.168.133.1:8848 gateway-server-0.0.1-SNAPSHOT.jar
+```
+
+不过不推荐用config.server-addr，推荐用import。不管怎样，老感觉程序加载根本没有读配置。
+
+这个命令有点用，可以看jar包里面的东西：
+```shell
+cd temp && jar -xf ../gateway-server-0.0.1-SNAPSHOT.jar
+```
+
+现在最新的情况是禁用了bootstrap.yml之类的配置文件，包括依赖也删掉了。用命令行能正常启动。
+用application.yml就是不行，但是100%确定程序读了application.yml中的配置，因为我把
+```shell
+spring:
+  config:
+    import: optional:nacos:${spring.cloud.nacos.discovery.server-addr}
+```
+
+写成了
+```shell
+spring:
+  cloud:
+    config:
+      import: optional:nacos:${spring.cloud.nacos.discovery.server-addr}
+```
+
+会报错：
+```shell
+No spring.config.import property has been defined
+```
+
+所以100%配置是读了的。
+我后边又测试下面这个命令，也是成功的：
+```shell
+java -jar  -Dspring.cloud.nacos.config.server-addr=192.168.133.1:8848 gateway-server-0.0.1-SNAPSHOT.jar
+```
+
+我现在怀疑从nacos服务端引入配置之后，把本地的冲掉了，导致老是去连127.0.0.1。明天试试在服务端创建配置。
+
