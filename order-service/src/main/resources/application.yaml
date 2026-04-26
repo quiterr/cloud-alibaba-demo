@@ -4,9 +4,14 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: 127.0.0.1:8848
+        server-addr: 192.168.133.1:8848
+        namespace: 00a0082e-b0d6-4a45-964a-e865f9e69e49
+      config:
+        server-addr: 192.168.133.1:8848
+        namespace: 00a0082e-b0d6-4a45-964a-e865f9e69e49
+        group: DEFAULT_GROUP
   config:
-    import: optional:nacos:localhost:8848
+    import: optional:nacos:order-service.yml
 server:
   port: 8082
 powerjob:

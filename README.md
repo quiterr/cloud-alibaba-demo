@@ -750,3 +750,109 @@ java -jar  -Dspring.cloud.nacos.config.server-addr=192.168.133.1:8848 gateway-se
 
 我现在怀疑从nacos服务端引入配置之后，把本地的冲掉了，导致老是去连127.0.0.1。明天试试在服务端创建配置。
 
+
+## springcloud gateway
+
+第一个注意点：别引入spring-boot-starter-web
+
+第二个注意点：与acurator结合使用时，要加enable: true
+```shell
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"              # 暴露所有端点（生产环境按需）
+      base-path: /actuator        # 访问前缀
+  endpoint:
+    health:
+      show-details: always        # 显示详细健康信息
+    gateway:
+      enabled: true
+```
+
+第三个注意点，下面这个配置
+```shell
+    gateway:
+      discovery:
+        locator:
+          enabled: false
+      routes:
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/user-service/**
+```
+
+访问会报404
+```shell
+http://localhost:8080/user-service/user/1
+```
+
+原因是路径多了一层，类似这样
+```shell
+http://localhost:8081/user-service/user-service/user/1
+```
+
+正确的配置：
+```shell
+spring:
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: false
+      routes:
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/user-service/**
+          filters:
+            - StripPrefix=1  # 👈 加这个！
+```
+
+默认就用自动路由吧，省心省力。
+
+第四个注意点，路由就在本地配置，别去nacos上折腾，不起作用。
+
+最后来一个tips，开启gateway端点后，访问http://localhost:8080/actuator/gateway/routes，可以看到路由
+```shell
+[
+{
+"predicate": "Paths: [/user-service/**], match trailing slash: true",
+"metadata": {
+"management.endpoints.web.base-path": "/actuator",
+"nacos.instanceId": "192.168.133.1#8081##DEFAULT_GROUP@@user-service",
+"nacos.weight": "1.0",
+"nacos.cluster": "DEFAULT",
+"IPv6": "[2401:7e00:820:c770:27a7:ca50:a89:ae1d]",
+"nacos.ephemeral": "true",
+"nacos.healthy": "true",
+"preserved.register.source": "SPRING_CLOUD"
+},
+"route_id": "ReactiveCompositeDiscoveryClient_user-service",
+"filters": [
+"[[RewritePath /user-service/?(?<remaining>.*) = '/${remaining}'], order = 1]"
+],
+"uri": "lb://user-service",
+"order": 0
+},
+{
+"predicate": "Paths: [/order-service/**], match trailing slash: true",
+"metadata": {
+"nacos.instanceId": "192.168.133.1#8082##DEFAULT_GROUP@@order-service",
+"nacos.weight": "1.0",
+"nacos.cluster": "DEFAULT",
+"IPv6": "[2401:7e00:820:c770:27a7:ca50:a89:ae1d]",
+"nacos.ephemeral": "true",
+"nacos.healthy": "true",
+"preserved.register.source": "SPRING_CLOUD"
+},
+"route_id": "ReactiveCompositeDiscoveryClient_order-service",
+"filters": [
+"[[RewritePath /order-service/?(?<remaining>.*) = '/${remaining}'], order = 1]"
+],
+"uri": "lb://order-service",
+"order": 0
+}
+]
+```
