@@ -625,6 +625,159 @@ kubectl delete service gateway
 kubectl delete pod --all --force
 ```
 
+## 将slave节点加入k8s集群
+以下是安装k8s之前的初始化操作
+
+```shell
+#关闭防火墙
+systemctl stop firewalld
+systemctl disable firewalld
+
+#关闭selinux
+vim /etc/selinux/config
+#设置SELINUX=disabled
+reboot
+
+#设置虚拟机IP固定
+vim /etc/sysconfig/network-scripts/ifcfg-ens33
+#加上如下配置
+IPADDR=192.168.133.182  #按需修改
+NETMASK=255.255.255.0
+GATEWAY=192.168.133.2  #在vmware编辑->虚拟网络编辑器 可以查看网关地址
+DNS1=223.5.5.5   
+DNS2=114.114.114.114
+
+#关闭swap，内存够久不需要swap
+vim /etc/fstab
+#注释掉下面这行
+# /dev/mapper/klas-swap swap swap defaults 0 0
+
+#设置主机名和IP
+hostnamectl set-hostname k8s-node1
+vim /etc/hosts
+#在文件中加两行
+192.168.133.182 k8s-node1
+192.168.133.184 k8s-node2
+
+#加载内核模块
+cat <<EOF | tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+
+modprobe overlay
+modprobe br_netfilter
+
+#网络参数
+cat <<EOF | tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables  = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward                 = 1
+EOF
+
+sysctl --system
+```
+
+开启 ip_forward
+```shell
+# 1. 强制开启 ip_forward
+echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+
+# 2. 强制覆盖系统检查文件
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+# 3. 强制加载所有网络参数
+sysctl -p /etc/sysctl.conf
+sysctl --system
+
+# 4. 验证是否真的变成 1（必须输出 1 才算成功）
+cat /proc/sys/net/ipv4/ip_forward
+```
+
+接着是安装container和k8s，一直到下面这条命令执行成功：
+```shell
+systemctl enable --now kubelet
+```
+
+安装完成后可以加入k8s集群。
+
+#slave节点加入k8s集群
+```shell
+#在master节点创建token，并生成join命令
+kubeadm token create --print-join-command
+
+#生成出来的命令像这样，复制到slave节点上执行
+kubeadm join 192.168.133.129:6443 --token fqnk6b.ez169hd02hb1gguz --discovery-token-ca-cert-hash sha256:dbf8d9919e131f47b72816546c7ff1ff0f24887a473d2a6217f04b872cd071c9
+
+#加入成功的打印
+This node has joined the cluster:
+* Certificate signing request was sent to apiserver and a response was received.
+* The Kubelet was informed of the new secure connection details.
+
+Run 'kubectl get nodes' on the control-plane to see this node join the cluster.
+
+#此时slave节点还是not ready状态，安装 Calico 网络插件（必须装，节点才会 Ready）
+#在master节点执行
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/calico.yaml
+
+#上面的命令执行成功了，但还是not ready状态
+#通过下述命令可以看到calico镜像拉取失败了
+kubectl get pods -n kube-system -o wide
+
+#豆包推荐配置 containerd 全局镜像加速（必做，根治以后所有镜像拉取失败）
+#每台节点都要做
+#备份当前可用配置
+cp /etc/containerd/config.toml /etc/containerd/config.toml.bak
+
+# 开启SystemdCgroup
+sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml
+
+# 插入DaoCloud镜像源
+sed -i '/\[plugins."io.containerd.grpc.v1.cri".registry.mirrors\]/a \
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]\
+      endpoint = ["https://docker.m.daocloud.io"]\
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."quay.io"]\
+      endpoint = ["https://docker.m.daocloud.io"]\
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry.k8s.io"]\
+      endpoint = ["https://k8s.m.daocloud.io"]' /etc/containerd/config.toml
+# 重启containerd
+systemctl daemon-reload
+systemctl restart containerd
+systemctl status containerd
+
+#重新拉取镜像
+kubectl delete -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/calico.yaml
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/calico.yaml
+
+#镜像下载正常流转
+ImagePullBackOff → Pulling → Pulled → Init:1/3 → 1/1 Running
+
+#查看pod的运行状态，calico都是Running状态就正常了
+kubectl get pods -n kube-system -o wide
+
+#查看slave节点是否成功加入k8s集群
+[root@k8s-node1 ~]# kubectl get nodes
+NAME        STATUS   ROLES           AGE   VERSION
+k8s-node1   Ready    control-plane   72d   v1.28.0
+k8s-node2   Ready    <none>          23h   v1.28.0
+```
+
+## 常用排错命令
+```shell
+#查看集群整体健康
+kubectl get cs
+kubectl get pods -n kube-system
+
+#节点加入失败排错（node 节点执行）
+# 查看kubelet日志
+journalctl -u kubelet -f
+# 重置节点重新加入（加入失败清理环境）
+kubeadm reset -f
+```
+
+
+
+
 ## 在服务器上部署微服务
 
 遇到了报错：
