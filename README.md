@@ -745,7 +745,7 @@ systemctl daemon-reload
 systemctl restart containerd
 systemctl status containerd
 
-#重新拉取镜像
+#重新拉取镜像，下载镜像有点慢，可能要等七八分钟才行
 kubectl delete -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/calico.yaml
 kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/calico.yaml
 
@@ -764,6 +764,9 @@ k8s-node2   Ready    <none>          23h   v1.28.0
 
 ## 常用排错命令
 ```shell
+#查看节点状态
+kubectl get nodes
+
 #查看集群整体健康
 kubectl get cs
 kubectl get pods -n kube-system
@@ -773,9 +776,55 @@ kubectl get pods -n kube-system
 journalctl -u kubelet -f
 # 重置节点重新加入（加入失败清理环境）
 kubeadm reset -f
+
+#查看某个pod的状态
+kubectl describe pod -n kube-system calico-node-b85vk
+
+#重新部署某个节点上的指定pod
+kubectl delete pod calico-node-w65f8 -n kube-system
+
+#重新滚动部署所有节点上的指定pod
+kubectl rollout restart daemonset calico-node -n kube-system
 ```
 
+## 在k8s集群中部署nginx测试
 
+到这里，已经学习了node、pod、service三个基本概念了。
+
+```shell
+ # 创建 deployment，副本数2
+kubectl create deployment nginx-demo --image=nginx:1.24-alpine --replicas=2
+# 先创建NodePort服务，自动随机分配 30000-32767 区间 nodePort
+kubectl expose deployment nginx-demo --type=NodePort --port=80 --target-port=80
+# 通过配置查看暴露的service端口
+kubectl edit svc nginx-demo
+# 也可以通过命令查看service分配端口
+kubectl get svc
+#查看部署状态
+kubectl get deploy
+
+
+#一些常用命令
+# 扩容副本到5个
+kubectl scale deployment nginx-demo --replicas=5
+
+# 进入容器内部
+kubectl exec -it deployment/nginx-demo -- sh
+
+# 查看日志
+kubectl logs -f deployment/nginx-demo
+
+# 删除整套服务
+kubectl delete -f nginx.yaml
+# 或者命令删除
+kubectl delete deployment nginx-demo
+kubectl delete svc nginx-svc
+
+#验证是否三个节点都部署了nginx
+http://192.168.133.129:31010
+http://192.168.133.184:31010
+http://192.168.133.185:31010
+```
 
 
 ## 在服务器上部署微服务
