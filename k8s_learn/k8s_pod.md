@@ -486,7 +486,7 @@ kubectl delete -f deploy-probe-startup.yaml
 
 ## pod生命周期
 图解pod生命周期
-![img.png](img/img.png)
+![pod_lifecycle.png](img/pod_lifecycle.png)
 
 一、Pod 生命周期整体总览
 Pod 从创建到销毁完整阶段：
