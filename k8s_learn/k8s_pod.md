@@ -646,3 +646,9 @@ spec:
     emptyDir: {}
 ```
 
+常用命令：
+```shell
+# 强制删除某个一直Terminating的pod
+kubectl delete pod harbor-core-5d84bdd76b-sm9vf -n harbor --force --grace-period=0
+```
+
