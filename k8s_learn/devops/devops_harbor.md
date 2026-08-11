@@ -1,79 +1,12 @@
 # devops
 
-## 虚拟机设置代理
-
-注意：不能在/etc/profile中设置永久代理，那样kubelet、calico‑node、kube‑proxy都会走代理，
-会导致k8s集群内部网络出问题。只能是执行命令的shell设置临时代理，同时三台节点的container都需要
-设置代理，以便每个节点都可以拉取镜像。
-
-1、Clash设置，开启局域网连接。
-
-2、需要执行helm命令的节点，在shell设置代理。
-```shell
-# http/https代理
-export http_proxy=http://192.168.133.1:7897
-export https_proxy=http://192.168.133.1:7897
-# 集群内部无需代理
-export no_proxy=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16
-```
-
-3、windows防火墙允许7897
-
-高级设置->新建规则，新建一条入网端口允许的规则
-
-4、测试
-```shell
-curl -I https://hub.docker.com
-```
-
-5、设置containerd 镜像拉取代理
-
-k8s 容器运行时 containerd 不会读取 linux 环境变量，三台节点都需要配置代理
-```shell
-mkdir -p /etc/systemd/system/containerd.service.d
-vim /etc/systemd/system/containerd.service.d/http-proxy.conf
-```
-
-写入下面的内容
-```shell
-[Service]
-Environment="HTTP_PROXY=http://192.168.133.1:7897"
-Environment="HTTPS_PROXY=http://192.168.133.1:7897"
-Environment="NO_PROXY=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.svc.cluster.local"
-```
-
-重载服务、重启 containerd
-```shell
-systemctl daemon-reload
-systemctl restart containerd
-```
-
-可以用命令测试代理是否正确
-```shell
-
-```
-
-可以用命令手动下载镜像
-```shell
-export CRICTL_CONFIG=/etc/crictl.yaml
-echo 'runtime-endpoint: unix:///run/containerd/containerd.sock' > /etc/crictl.yaml
-crictl --runtime-endpoint unix:///run/containerd/containerd.sock pull goharbor/harbor-db:v2.14.1
-```
-
-取消shell中设置的代理
-```shell
-# 已经打开的shell，需要执行unset命令
-unset http_proxy
-unset https_proxy
-unset no_proxy
-```
-
 ## 什么是devops
 
 ![devops.png](../img/devops.png)
 
 ## 安装harbor
 
+### helm安装harbor
 harbor是私有docker镜像仓库，方便后续k8s拉取镜像。
 
 在node2使用helm安装harbor
@@ -189,42 +122,112 @@ Normal   SandboxChanged          6m9s (x30 over 37m)  kubelet            Pod san
 
 ```
 
-**访问harbor**
+## 访问harbor
 
 http://192.168.133.129:30002
 - 账号：`admin`
 - 密码：`Admin@123456`
 
+### 配置container
+在三台节点都配置containerd信任非安全HTTP，编辑`/etc/containerd/config.toml`，在适当位置添加
+```text
+[plugins."io.containerd.grpc.v1.cri".registry.configs."192.168.133.129:30002".tls]
+  insecure_skip_verify = true
+  
+[plugins."io.containerd.grpc.v1.cri".registry.mirrors."192.168.133.129:30002"]
+  endpoint = ["http://192.168.133.129:30002"]
+  
+[plugins."io.containerd.grpc.v1.cri".registry.configs."192.168.133.129:30002".auth]
+    username = "admin"
+    password = "Admin@123456"
+```
 
-卸载harbor的命令
+```shell
+# 校验toml语法，防止写错
+containerd config dump
+# 重载重启
+systemctl daemon-reload
+systemctl restart containerd
+```
+
+### 配置pod
+
+配置secret是为了pod能访问harbor
+
+```shell
+kubectl create secret docker-registry harbor-secret \
+-n default \
+--docker-server=192.168.133.129:30002 \
+--docker-username=admin \
+--docker-password=Admin@123456
+```
+
+后续在pod yaml中引用secret
+```yaml
+spec:
+  imagePullSecrets:
+    - name: harbor-secret
+```
+
+### 卸载harbor的命令
+
 ```shell
 helm uninstall harbor -n harbor
 kubectl delete pods -n harbor --all --force --grace-period=0
 kubectl delete pvc --all -n harbor
 ```
 
-## 安装Jenkins
+## 推送微服务镜像到harbor
 
-```shell
-# 添加仓库
-helm repo add jenkins https://charts.jenkins.io
-# 更新仓库索引
-helm repo update jenkins
-# 创建命名空间
-kubectl create ns jenkins
-# 完整安装命令
-helm upgrade --install jenkins jenkins/jenkins \
--n jenkins \
---set controller.service.type=NodePort \
---set controller.service.nodePort=30080 \
---set controller.persistence.storageClass=nfs-dynamic-sc \
---set controller.persistence.size=15Gi \
---set controller.resources.requests.cpu=500m \
---set controller.resources.requests.memory=512Mi \
---set controller.resources.limits.cpu=1 \
---set controller.resources.limits.memory=1Gi \
---set prometheus.enabled=false \
---set grafana.enabled=false
-# 查看pod状态
-kubectl get pods -n jenkins -w
+1、配置Docker Desktop
+
+打开 Docker Desktop → Settings → Docker Engine，添加如下内容
+```text
+"insecure-registries": [
+  "harbor.your-local.com"
+]
 ```
+点击 Apply & Restart 重启 Docker 引擎
+
+检查docker连通性
+```shell
+docker login 192.168.133.129:30002
+```
+
+2、编写Dockerfile
+
+在gateway-server目录下创建Dockerfile，写入以下内容
+```text
+FROM openjdk:17-jdk-slim
+VOLUME /tmp
+# 暴露服务端口（网关默认9999，按需修改）
+EXPOSE 9999
+COPY target/*.jar app.jar
+ENTRYPOINT ["java","-jar","app.jar"]
+```
+
+3、maven打包
+
+4、构建本地镜像
+
+进入到gateway-server目录下，执行
+```shell
+docker build -t 192.168.133.129:30002/spring_cloud_demo/gateway-server:v1.0 .
+```
+参数解释
+
+- `192.168.133.129:30002`：harbor 地址
+- `spring_cloud_demo`：Harbor 上面你提前建好的项目名称
+- `gateway-server`：服务镜像名
+- `v1.0` 版本标签
+
+5、推送镜像至harbor
+```shell
+docker push 192.168.133.129:30002/spring_cloud_demo/gateway-server:v1.0
+```
+
+除了用命令，idea和maven都可以配置生成和推送镜像到harbor。
+
+直接从本地打包推送镜像到harbor只能用于开发个人测试，生产环境由Jenkins拉取代码，通过一系列门禁后推送到harbor，
+再由k8s拉取镜像并部署到各个节点。
+
