@@ -1,4 +1,4 @@
-FROM eclipse-temurin:17-jre-headless
+FROM eclipse-temurin:17-jre
 VOLUME /tmp
 # 暴露服务端口（网关默认9999，按需修改）
 EXPOSE 9999
