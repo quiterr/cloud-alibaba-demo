@@ -113,7 +113,7 @@ kubectl logs -f jenkins-0 -n jenkins -c jenkins
 
 ```
 
-## 使用Jenkins
+## 访问Jenkins
 
 获取 Jenkins 管理员密码。
 ```shell
@@ -247,7 +247,7 @@ spec:
 
 ```
 
-### 拉取镜像阶段
+### 拉取镜像
 
 流水线运行起来后卡住：
 ```shell
@@ -515,7 +515,7 @@ Error: error resolving dockerfile path: please provide a valid path to a Dockerf
 }
 ```
 
-### 解决镜像推送harbor问题（费了些时间）
+### 解决镜像推送harbor问题（含重点问题）
 
 项目名不存在，不是短横线-，是下划线_
 ```shell
@@ -690,9 +690,204 @@ spec:
 
 ```
 
+## 自动化部署
 
+### 权限准备
+Jenkins slave Pod 默认用`default` sa，权限不足，需要创建 RBAC：
+```yaml
+# jenkins-deploy-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: default # 你的业务应用部署namespace，改成实际
+  name: jenkins-deploy-role
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "update", "patch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get","list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jenkins-deploy-rb
+  namespace: default
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: jenkins # jenkins agent所在namespace
+roleRef:
+  kind: Role
+  name: jenkins-deploy-role
+  apiGroup: rbac.authorization.k8s.io
+```
 
+```shell
+kubectl apply -f jenkins-deploy-rbac.yaml
+```
 
+### 流水线补充部署代码
+
+```groovy
+pipeline {
+  agent {
+    kubernetes {
+      yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: jnlp
+    image: jenkins/inbound-agent:jdk21
+    resources:
+      limits:
+        cpu: 2
+        memory: 2Gi
+  - name: maven
+    image: maven:3.9.8-eclipse-temurin-17
+    command: ['cat']
+    tty: true
+    volumeMounts:
+    - name: maven-repo
+      mountPath: /root/.m2/repository
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:v1.22.0-debug
+    command: ['cat']
+    tty: true
+    volumeMounts:
+    - name: harbor-auth
+      mountPath: /kaniko/.docker
+  # 新增kubectl容器
+  - name: kubectl
+    image: "alpine/k8s:1.28.0"
+    command: ['cat']
+    tty: true
+  volumes:
+  - name: harbor-auth
+    secret:
+      secretName: jenkins-harbor-secret
+  - name: maven-repo
+    persistentVolumeClaim:
+      claimName: maven-repo-pvc
+"""
+    }
+  }
+
+    environment {
+        // 和你kaniko推送保持一致镜像地址
+        IMAGE = "192.168.133.129:30002/spring_cloud_demo/gateway:v1"
+        DEPLOY_NS = "default"
+        DEPLOY_NAME = "gateway"
+    }
+
+  stages {
+    stage('拉取代码') {
+      steps {
+        git url: 'https://github.com/quiterr/cloud-alibaba-demo.git'
+      }
+    }
+    stage('Maven编译打包') {
+      steps {
+        container('maven') {
+          sh 'mvn clean package -DskipTests'
+        }
+      }
+    }
+    stage('Kaniko构建镜像推送Harbor') {
+      steps {
+        container('kaniko') {
+          sh '''
+            /kaniko/executor \
+            --context=`pwd` \
+            --dockerfile=`pwd`/Dockerfile \
+            --destination=${IMAGE} \
+            --insecure
+          '''
+        }
+      }
+    }
+      // ==========新增自动部署阶段============
+      stage('部署到K8s') {
+          steps {
+              container('kubectl') {
+                  sh """
+            /usr/bin/kubectl set image deployment/${DEPLOY_NAME} ${DEPLOY_NAME}=${IMAGE} -n ${DEPLOY_NS}
+            /usr/bin/kubectl rollout status deployment/${DEPLOY_NAME} -n ${DEPLOY_NS} --timeout=300s
+          """
+              }
+          }
+      }
+  }
+}
+```
+
+### kubectl镜像拉取问题（重点问题）
+
+上一章节最开始kubectl镜像用的`bitnami/kubectl:1.28.0`，拉取的时候报not found，无论怎么改版本号都是一样，bitnami的镜像根本拉取不下来。
+
+最后没办法，用了`alpine/k8s:1.28.0`镜像。
+
+### gateway的部署yaml
+
+如果不创建gateway的Deployment，Jenkins流水线会报错
+```shell
+error from server (NotFound): deployments.apps "gateway" not found
+```
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: 192.168.133.129:30002/spring_cloud_demo/gateway:v1
+          ports:
+            - containerPort: 8080
+
+```
+
+```shell
+kubectl apply -f gateway-deploy.yaml
+```
+
+## 微服务部署后查看日志
+```shell
+# 查看pod是否正常运行
+kubectl get pods
+# 查看pod的事件
+kubectl describe pod harbor-nginx-86458b74c6-vdb25
+# 直接看日志，-f 实时跟踪输出（类似tail -f）
+kubectl logs -f deployment/gateway -n default
+# 或者用pod名字
+kubectl logs -f gateway-6c4997c6d5-6ppzv -n default
+# Pod 发生过重启、崩溃退出，看上一次退出前的日志
+kubectl logs --previous deployment/gateway -n default
+# 进入容器内部交互调试，进入后可以直接看日志文件
+kubectl exec -it deployment/gateway -n default -- sh
+# 或者pod名称
+kubectl exec -it gateway-6c4997c6d5-6ppzv -n default -- sh
+# 日志保存到本地文件
+kubectl logs deployment/gateway -n default > gateway.log
+```
+
+查看应用启动参数
+```shell
+cat /proc/1/cmdline
+```
 
 
 ## 遇到的其他错误
