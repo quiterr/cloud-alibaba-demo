@@ -10,7 +10,7 @@ pod通过nodeSelector部署在应用类型的node上，通过service对外暴露
 
 访问顺序是ingress->service->pod。
 
-![server.png](../../img/service.png)
+![server.png](../img/service.png)
 
 ## svc、ep、pod之间的关系
 

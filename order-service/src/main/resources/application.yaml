@@ -23,3 +23,18 @@ powerjob:
     max-result-length: 4096
     max-lightweight-task-num: 4      # 最大同时运行的轻量级任务数
     max-heavyweight-task-num: 2      # 最大同时运行的重量级任务数
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"              # 暴露所有端点（生产环境按需）
+      base-path: /actuator        # 访问前缀
+  endpoint:
+    health:
+      show-details: always        # 显示详细健康信息
+    gateway:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
