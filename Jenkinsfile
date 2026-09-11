@@ -43,8 +43,6 @@ spec:
   environment {
     HARBOR_ADDR = "192.168.133.129:30002"
     PROJECT = "spring_cloud_demo"
-    // 动态获取git 8位短commit hash
-    GIT_SHORT_COMMIT = sh(script: 'echo ${GIT_COMMIT:0:8}', returnStdout: true).trim()
   }
   stages {
     stage('拉取代码') {
@@ -54,6 +52,7 @@ spec:
     }
     stage('打印版本信息') {
       steps {
+        GIT_SHORT_COMMIT = sh(script: 'git rev-parse --short=8 HEAD', returnStdout: true).trim()
         echo "Git短Commit Hash: ${GIT_SHORT_COMMIT}"
       }
     }
