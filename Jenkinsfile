@@ -82,7 +82,7 @@ spec:
               export https_proxy=http://192.168.133.1:7897
               export NO_PROXY=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
               export no_proxy=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
-              WORKSPACE_DIR="/home/jenkins/agent/workspace/spring_cloud_scm_${BRANCH_NAME}"
+
                 /kaniko/executor \
                 --context=`pwd`/gateway-server \
                 --dockerfile="Dockerfile" \
@@ -103,7 +103,7 @@ spec:
             export https_proxy=http://192.168.133.1:7897
             export NO_PROXY=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
             export no_proxy=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
-              WORKSPACE_DIR="/home/jenkins/agent/workspace/spring_cloud_scm_${BRANCH_NAME}"
+
                 /kaniko/executor \
                 --context=`pwd`/user-service \
                 --dockerfile="Dockerfile" \
@@ -124,7 +124,7 @@ spec:
             export https_proxy=http://192.168.133.1:7897
             export NO_PROXY=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
             export no_proxy=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
-              WORKSPACE_DIR="/home/jenkins/agent/workspace/spring_cloud_scm_${BRANCH_NAME}"
+
                 /kaniko/executor \
                 --context=`pwd`/order-service \
                 --dockerfile="Dockerfile" \
