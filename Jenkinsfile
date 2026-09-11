@@ -48,7 +48,7 @@ spec:
     persistentVolumeClaim:
       claimName: maven-repo-pvc
   - name: jenkins-workspace
-      emptyDir: {}
+    emptyDir: {}
 """
     }
   }
