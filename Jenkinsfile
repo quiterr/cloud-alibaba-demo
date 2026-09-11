@@ -52,8 +52,14 @@ spec:
     }
     stage('打印版本信息') {
       steps {
-        GIT_SHORT_COMMIT = sh(script: 'git rev-parse --short=8 HEAD', returnStdout: true).trim()
-        echo "Git短Commit Hash: ${GIT_SHORT_COMMIT}"
+        script {
+          def shortHash = sh(
+                  script: 'git rev-parse --short=8 HEAD',
+                  returnStdout: true
+          ).trim()
+          env.GIT_SHORT_COMMIT = shortHash
+          echo "短Commit哈希：${env.GIT_SHORT_COMMIT}"
+        }
       }
     }
     stage('Maven全模块打包') {
