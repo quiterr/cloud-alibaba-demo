@@ -367,6 +367,8 @@ checkout scm 和 git url的区别？
 > 👉你的场景：**Jenkinsfile 存放在 git 仓库，使用「Pipeline from SCM」模式，就用`checkout scm`，这是标准做法**。
 > 此时流水线自动拿到`GIT_COMMIT`，你写的`git rev‑parse --short=8 HEAD`也可以正常工作。
 
+具体怎么设置比较简单，在Jenkins网页点几下就可以了，真正要写的是项目中的Jenkinsfile。
+
 ## 补充说明
 
 1. 版本：当前固定`v1`，正式环境建议用 git commit 短 hash 作为镜像 tag，避免覆盖旧镜像。
@@ -389,6 +391,15 @@ checkout scm 和 git url的区别？
 5. 网关用的nodeport，生产是不是建议类似ingress，目前主流是ngf？
 
 6. 既然Jenkinsfile放在了项目根目录，还需要拷贝到Jenkins流水线吗？
+7. kaniko工作目录的两种写法
+```shell
+# 第一种
+--context=`pwd`/gateway-server \
+
+# 第二种
+WORKSPACE_DIR="/home/jenkins/agent/workspace/spring_cloud_scm_${BRANCH_NAME}"
+--context="${WORKSPACE_DIR}/user-service" \
+```
 
 
 
