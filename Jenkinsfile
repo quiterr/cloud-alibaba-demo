@@ -6,30 +6,55 @@ apiVersion: v1
 kind: Pod
 spec:
   containers:
+  - name: jnlp
+    image: jenkins/inbound-agent:jdk21
+    resources:
+      limits:
+        cpu: 2
+        memory: 2Gi
   - name: maven
-    image: maven:3.8.8-openjdk-17
+    image: maven:3.9.8-eclipse-temurin-17
     command: ['cat']
     tty: true
+    volumeMounts:
+    - name: maven-repo
+      mountPath: /root/.m2/repository
   - name: kaniko
-    image: gcr.io/kaniko-project/executor:v1.21.0-debug
+    image: gcr.io/kaniko-project/executor:v1.22.0-debug
     command: ['cat']
     tty: true
+    volumeMounts:
+    - name: harbor-auth
+      mountPath: /kaniko/.docker
   - name: kubectl
-    image: alpine/k8s:1.28.0
+    image: "alpine/k8s:1.28.0"
     command: ['cat']
     tty: true
+  volumes:
+  - name: harbor-auth
+    secret:
+      secretName: jenkins-harbor-secret
+  - name: maven-repo
+    persistentVolumeClaim:
+      claimName: maven-repo-pvc
 """
     }
   }
   environment {
     HARBOR_ADDR = "192.168.133.129:30002"
     PROJECT = "spring_cloud_demo"
-    TAG = "v1"
+    // 动态获取git 8位短commit hash
+    GIT_SHORT_COMMIT = sh(script: 'echo ${GIT_COMMIT:0:8}', returnStdout: true).trim()
   }
   stages {
     stage('拉取代码') {
       steps {
         checkout scm
+      }
+    }
+    stage('打印版本信息') {
+      steps {
+        echo "Git短Commit Hash: ${GIT_SHORT_COMMIT}"
       }
     }
     stage('Maven全模块打包') {
@@ -48,7 +73,7 @@ spec:
 /kaniko/executor \
 --context="${pwd}/gateway-server" \
 --dockerfile="${pwd}/gateway-server/Dockerfile" \
---destination=${HARBOR_ADDR}/${PROJECT}/gateway:${TAG} \
+--destination=${HARBOR_ADDR}/${PROJECT}/gateway:${GIT_SHORT_COMMIT} \
 --insecure --skip-tls-verify
 '''
             }
@@ -61,7 +86,7 @@ spec:
 /kaniko/executor \
 --context="${pwd}/user-service" \
 --dockerfile="${pwd}/user-service/Dockerfile" \
---destination=${HARBOR_ADDR}/${PROJECT}/user-service:${TAG} \
+--destination=${HARBOR_ADDR}/${PROJECT}/user-service:${GIT_SHORT_COMMIT} \
 --insecure --skip-tls-verify
 '''
             }
@@ -74,7 +99,7 @@ spec:
 /kaniko/executor \
 --context="${pwd}/order-service" \
 --dockerfile="${pwd}/order-service/Dockerfile" \
---destination=${HARBOR_ADDR}/${PROJECT}/order-service:${TAG} \
+--destination=${HARBOR_ADDR}/${PROJECT}/order-service:${GIT_SHORT_COMMIT} \
 --insecure --skip-tls-verify
 '''
             }
@@ -86,13 +111,16 @@ spec:
       steps {
         container('kubectl') {
           sh '''
-apk add --no-cache gcompat
-kubectl apply -f k8s/gateway.yaml
-kubectl apply -f k8s/user-service.yaml
-kubectl apply -f k8s/order-service.yaml
+
+kubectl set image deployment/gateway gateway=192.168.133.129:30002/spring_cloud_demo/gateway:${GIT_SHORT_COMMIT}
+kubectl set image deployment/user-service user-service=192.168.133.129:30002/spring_cloud_demo/user-service:${GIT_SHORT_COMMIT}
+kubectl set image deployment/order-service order-service=192.168.133.129:30002/spring_cloud_demo/order-service:${GIT_SHORT_COMMIT}
+
+# 等待所有deployment滚动完成
 kubectl rollout status deployment/gateway
 kubectl rollout status deployment/user-service
 kubectl rollout status deployment/order-service
+
 '''
         }
       }

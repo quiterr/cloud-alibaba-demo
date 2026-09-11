@@ -332,7 +332,7 @@ demo
 └── README.md
 ```
 
-## 部署验证命令
+## 5. 部署验证命令
 ```shell
 # 查看所有pod
 kubectl get pods
@@ -344,6 +344,51 @@ curl http://192.168.133.185:30080
 kubectl exec -it deployment/order-service -- sh
 curl http://user-service
 ```
+
+## 6. checkout scm
+
+checkout scm 和 git url的区别？
+
+`scm` 是**Jenkins 内置全局对象**，它读取的是 **Jenkins 项目配置页面里配置的源码管理信息**。
+
+✅特点：
+
+1. 来源不是写死在 Jenkinsfile，是读取 Job 网页配置：仓库地址、分支、凭证、refspec 全部来自 Job 配置页面。
+2. **多分支流水线（Multibranch Pipeline）必用**：自动识别触发的分支、PR、tag，自动拉取对应分支代码，不用硬写分支。
+3. 会保留 Jenkins 的构建元信息：设置`git remote`、build 变量 `GIT_COMMIT`、`GIT_SHORT_COMMIT`、`GIT_BRANCH` 环境变量。
+4. 适合：代码仓库地址写在 Jenkins Job 页面，Jenkinsfile 托管在本仓库（Pipeline from SCM）。
+
+⚠️限制：
+
+- 如果你的 Job 是「流水线脚本」（脚本写在 Jenkins 网页输入框），没有在 Job 页面配置 SCM，直接调用`checkout scm`会报错。
+- 仓库地址不能在 Jenkinsfile 内部修改，改仓库要去网页上改 Job 配置。
+
+>
+> 👉你的场景：**Jenkinsfile 存放在 git 仓库，使用「Pipeline from SCM」模式，就用`checkout scm`，这是标准做法**。
+> 此时流水线自动拿到`GIT_COMMIT`，你写的`git rev‑parse --short=8 HEAD`也可以正常工作。
+
+## 补充说明
+
+1. 版本：当前固定`v1`，正式环境建议用 git commit 短 hash 作为镜像 tag，避免覆盖旧镜像。
+```groovy
+  environment {
+    HARBOR_ADDR = "192.168.133.129:30002"
+    PROJECT = "spring_cloud_demo"
+    // 动态获取git 8位短commit hash
+    GIT_SHORT_COMMIT = sh(script: 'git rev-parse --short=8 HEAD', returnStdout: true).trim()
+  }
+```
+
+2. 配置：把 SpringBoot 配置抽离到 ConfigMap/Secret，不要打包进镜像。
+
+
+3. 解释程序启动参数 +UseContainerSupport,MaxRAMPercentage=70.0，这里的内存限制与k8s的资源限制是什么关系？
+
+4. 生产环境replicas: 1副本设置为多少比较合适？
+
+5. 网关用的nodeport，生产是不是建议类似ingress，目前主流是ngf？
+
+6. 既然Jenkinsfile放在了项目根目录，还需要拷贝到Jenkins流水线吗？
 
 
 
