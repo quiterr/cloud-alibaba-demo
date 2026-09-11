@@ -77,7 +77,7 @@ spec:
               sh '''
 /kaniko/executor \
 --context="${pwd}/gateway-server" \
---dockerfile="${pwd}/gateway-server/Dockerfile" \
+--dockerfile="Dockerfile" \
 --destination=${HARBOR_ADDR}/${PROJECT}/gateway:${GIT_SHORT_COMMIT} \
 --insecure --skip-tls-verify
 '''
@@ -90,7 +90,7 @@ spec:
               sh '''
 /kaniko/executor \
 --context="${pwd}/user-service" \
---dockerfile="${pwd}/user-service/Dockerfile" \
+--dockerfile="Dockerfile" \
 --destination=${HARBOR_ADDR}/${PROJECT}/user-service:${GIT_SHORT_COMMIT} \
 --insecure --skip-tls-verify
 '''
@@ -103,7 +103,7 @@ spec:
               sh '''
 /kaniko/executor \
 --context="${pwd}/order-service" \
---dockerfile="${pwd}/order-service/Dockerfile" \
+--dockerfile="Dockerfile" \
 --destination=${HARBOR_ADDR}/${PROJECT}/order-service:${GIT_SHORT_COMMIT} \
 --insecure --skip-tls-verify
 '''
