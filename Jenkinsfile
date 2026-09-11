@@ -8,9 +8,6 @@ spec:
   containers:
   - name: jnlp
     image: jenkins/inbound-agent:jdk21
-    volumeMounts:
-    - name: jenkins-workspace
-      mountPath: /workspace
     resources:
       limits:
         cpu: 2
@@ -22,8 +19,6 @@ spec:
     volumeMounts:
     - name: maven-repo
       mountPath: /root/.m2/repository
-    - name: jenkins-workspace
-      mountPath: /workspace
   - name: kaniko
     image: gcr.io/kaniko-project/executor:v1.22.0-debug
     command: ['cat']
@@ -31,15 +26,10 @@ spec:
     volumeMounts:
     - name: harbor-auth
       mountPath: /kaniko/.docker
-    - name: jenkins-workspace
-      mountPath: /workspace
   - name: kubectl
     image: "alpine/k8s:1.28.0"
     command: ['cat']
     tty: true
-    volumeMounts:
-    - name: jenkins-workspace
-      mountPath: /workspace
   volumes:
   - name: harbor-auth
     secret:
@@ -47,8 +37,6 @@ spec:
   - name: maven-repo
     persistentVolumeClaim:
       claimName: maven-repo-pvc
-  - name: jenkins-workspace
-    emptyDir: {}
 """
     }
   }
@@ -87,11 +75,12 @@ spec:
           steps {
             container('kaniko') {
               sh '''
-/kaniko/executor \
---context="/workspace/gateway-server" \
---dockerfile="Dockerfile" \
---destination=${HARBOR_ADDR}/${PROJECT}/gateway:${GIT_SHORT_COMMIT} \
---insecure --skip-tls-verify
+              WORKSPACE_DIR="/home/jenkins/agent/workspace/spring_cloud_scm_${BRANCH_NAME}"
+                /kaniko/executor \
+                --context="${WORKSPACE_DIR}/gateway-server" \
+                --dockerfile="Dockerfile" \
+                --destination=${HARBOR_ADDR}/${PROJECT}/gateway:${GIT_SHORT_COMMIT} \
+                --insecure --skip-tls-verify
 '''
             }
           }
@@ -100,11 +89,12 @@ spec:
           steps {
             container('kaniko') {
               sh '''
-/kaniko/executor \
---context="/workspace/user-service" \
---dockerfile="Dockerfile" \
---destination=${HARBOR_ADDR}/${PROJECT}/user-service:${GIT_SHORT_COMMIT} \
---insecure --skip-tls-verify
+              WORKSPACE_DIR="/home/jenkins/agent/workspace/spring_cloud_scm_${BRANCH_NAME}"
+                /kaniko/executor \
+                --context="${WORKSPACE_DIR}/user-service" \
+                --dockerfile="Dockerfile" \
+                --destination=${HARBOR_ADDR}/${PROJECT}/user-service:${GIT_SHORT_COMMIT} \
+                --insecure --skip-tls-verify
 '''
             }
           }
@@ -113,11 +103,12 @@ spec:
           steps {
             container('kaniko') {
               sh '''
-/kaniko/executor \
---context="/workspace/order-service" \
---dockerfile="Dockerfile" \
---destination=${HARBOR_ADDR}/${PROJECT}/order-service:${GIT_SHORT_COMMIT} \
---insecure --skip-tls-verify
+              WORKSPACE_DIR="/home/jenkins/agent/workspace/spring_cloud_scm_${BRANCH_NAME}"
+                /kaniko/executor \
+                --context="${WORKSPACE_DIR}/order-service" \
+                --dockerfile="Dockerfile" \
+                --destination=${HARBOR_ADDR}/${PROJECT}/order-service:${GIT_SHORT_COMMIT} \
+                --insecure --skip-tls-verify
 '''
             }
           }
