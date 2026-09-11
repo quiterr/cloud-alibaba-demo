@@ -25,10 +25,8 @@ registry-mirrors全部删除，给docker-desktop设置代理，注意不是127.0
 
 2、需要执行helm命令的节点，在shell设置代理。
 ```shell
-# http/https代理
 export http_proxy=http://192.168.133.1:7897
 export https_proxy=http://192.168.133.1:7897
-# 集群内部无需代理
 export no_proxy=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16
 ```
 
@@ -69,7 +67,13 @@ systemctl restart containerd
 export CRICTL_CONFIG=/etc/crictl.yaml
 echo 'runtime-endpoint: unix:///run/containerd/containerd.sock' > /etc/crictl.yaml
 crictl --runtime-endpoint unix:///run/containerd/containerd.sock pull goharbor/harbor-db:v2.14.1
+
+# crictl好像不打印下载进度，ctr命令更优
+# ctr是独立的命令，与container无关，因此要在shell中export代理设置
+ctr -n k8s.io images pull --platform linux/amd64 docker.io/library/eclipse-temurin:17-jre
 ```
+
+
 
 取消shell中设置的代理
 ```shell

@@ -371,7 +371,7 @@ checkout scm 和 git url的区别？
 
 ## 补充说明
 
-1. 版本：当前固定`v1`，正式环境建议用 git commit 短 hash 作为镜像 tag，避免覆盖旧镜像。
+### 版本：当前固定`v1`，正式环境建议用 git commit 短 hash 作为镜像 tag，避免覆盖旧镜像。
 ```groovy
   environment {
     HARBOR_ADDR = "192.168.133.129:30002"
@@ -391,14 +391,49 @@ checkout scm 和 git url的区别？
 5. 网关用的nodeport，生产是不是建议类似ingress，目前主流是ngf？
 
 6. 既然Jenkinsfile放在了项目根目录，还需要拷贝到Jenkins流水线吗？
-7. kaniko工作目录的两种写法
-```shell
+
+###  kaniko工作目录的两种写法
+```text
 # 第一种
 --context=`pwd`/gateway-server \
 
 # 第二种
 WORKSPACE_DIR="/home/jenkins/agent/workspace/spring_cloud_scm_${BRANCH_NAME}"
 --context="${WORKSPACE_DIR}/user-service" \
+```
+
+### 下载镜像并使用harbor缓存
+
+1、第一种方案，手动下载镜像并推送
+```shell
+# 拉取镜像
+ctr -n k8s.io images pull --platform linux/amd64 docker.io/library/eclipse-temurin:17-jre
+# 拉完验证
+ctr -n k8s.io images list | grep eclipse
+# 打 tag
+ctr -n k8s.io images tag docker.io/library/eclipse-temurin:17-jre 192.168.133.129:30002/spring_cloud_demo/eclipse-temurin:17-jre
+# 推送
+ctr -n k8s.io images push --platform linux/amd64 --plain-http -u admin:Admin@123456 192.168.133.129:30002/spring_cloud_demo/eclipse-temurin:17-jre
+
+```
+
+2、第二种方案：Harbor 创建代理缓存项目
+
+登录 Harbor 页面，新建项目，类型选 **代理缓存 (Proxy Cache)**
+    - 项目名称：`dockerio-proxy`
+    - 远程仓库：`Docker Hub`
+    - 远程仓库 URL：`https://registry-1.docker.io`
+    - 填入你的 dockerhub 账号密码（可选，提高拉取限流上限）
+
+> 访问格式：`192.168.133.129:30002/dockerio-proxy/eclipse-temurin:17-jre`
+
+
+修改Dockerfile
+```dockerfile
+# 原来
+FROM eclipse-temurin:17-jre
+# 改成
+FROM 192.168.133.129:30002/dockerio-proxy/eclipse-temurin:17-jre
 ```
 
 
