@@ -87,7 +87,7 @@ spec:
                 --context=`pwd`/gateway-server \
                 --dockerfile="Dockerfile" \
                 --destination=${HARBOR_ADDR}/${PROJECT}/gateway:${GIT_SHORT_COMMIT} \
-                --insecure --skip-tls-verify
+                --insecure --skip-tls-verify \
                 --cache=true \
                 --cache-repo=${HARBOR_ADDR}/${PROJECT}/kaniko-cache \
 '''
@@ -110,7 +110,7 @@ spec:
                 --context=`pwd`/user-service \
                 --dockerfile="Dockerfile" \
                 --destination=${HARBOR_ADDR}/${PROJECT}/user-service:${GIT_SHORT_COMMIT} \
-                --insecure --skip-tls-verify
+                --insecure --skip-tls-verify \
                 --cache=true \
                 --cache-repo=${HARBOR_ADDR}/${PROJECT}/kaniko-cache \
 '''
@@ -133,7 +133,7 @@ spec:
                 --context=`pwd`/order-service \
                 --dockerfile="Dockerfile" \
                 --destination=${HARBOR_ADDR}/${PROJECT}/order-service:${GIT_SHORT_COMMIT} \
-                --insecure --skip-tls-verify
+                --insecure --skip-tls-verify \
                 --cache=true \
                 --cache-repo=${HARBOR_ADDR}/${PROJECT}/kaniko-cache \
 '''

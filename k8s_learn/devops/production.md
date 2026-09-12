@@ -437,7 +437,13 @@ FROM 192.168.133.129:30002/dockerio-proxy/eclipse-temurin:17-jre
 
 3、使用kaniko的cache参数
 ```text
-
+/kaniko/executor \
+--context=`pwd`/gateway-server \
+--dockerfile="Dockerfile" \
+--destination=${HARBOR_ADDR}/${PROJECT}/gateway:${GIT_SHORT_COMMIT} \
+--insecure --skip-tls-verify
+--cache=true \
+--cache-repo=${HARBOR_ADDR}/${PROJECT}/kaniko-cache \
 ```
 
 
