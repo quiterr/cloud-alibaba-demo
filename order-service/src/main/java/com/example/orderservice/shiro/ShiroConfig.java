@@ -41,6 +41,8 @@ public class ShiroConfig {
 
         // 配置拦截规则
         Map<String, String> chain = new LinkedHashMap<>();
+        chain.put("/actuator/health", "anon");
+        chain.put("/actuator/health/**", "anon");
         chain.put("/login", "anon");        // 登录接口匿名访问
         chain.put("/doLogin", "anon");
         chain.put("/css/**", "anon");
