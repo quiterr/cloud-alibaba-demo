@@ -1,12 +1,12 @@
 # 生产级别的配置
 
-## 1. Dockerfile
+## Dockerfile
 
 每个微服务模块目录下，gateway-server、order-service、user-service 各放一份，只改 jar 名称
 
 gateway-server/Dockerfile
 ```dockerfile
-FROM openjdk:17-jdk-slim
+FROM 192.168.133.129:30002/spring_cloud_demo/eclipse-temurin:17-jre
 WORKDIR /app
 COPY target/gateway-server-0.0.1-SNAPSHOT.jar app.jar
 # JVM参数，生产推荐配置
@@ -15,7 +15,7 @@ ENTRYPOINT ["java","-XX:+UseContainerSupport","-XX:MaxRAMPercentage=70.0","-jar"
 
 order-service/Dockerfile
 ```dockerfile
-FROM openjdk:17-jdk-slim
+FROM 192.168.133.129:30002/spring_cloud_demo/eclipse-temurin:17-jre
 WORKDIR /app
 COPY target/order-service-0.0.1-SNAPSHOT.jar app.jar
 ENTRYPOINT ["java","-XX:+UseContainerSupport","-XX:MaxRAMPercentage=70.0","-jar","app.jar"]
@@ -23,13 +23,13 @@ ENTRYPOINT ["java","-XX:+UseContainerSupport","-XX:MaxRAMPercentage=70.0","-jar"
 
 user-service/Dockerfile
 ```dockerfile
-FROM openjdk:17-jdk-slim
+FROM 192.168.133.129:30002/spring_cloud_demo/eclipse-temurin:17-jre
 WORKDIR /app
 COPY target/user-service-0.0.1-SNAPSHOT.jar app.jar
 ENTRYPOINT ["java","-XX:+UseContainerSupport","-XX:MaxRAMPercentage=70.0","-jar","app.jar"]
 ```
 
-## 2. K8s YAML
+## K8s YAML
 
 单独新建 `k8s` 文件夹，统一存放所有资源
 
@@ -202,116 +202,195 @@ spec:
     targetPort: 8082
 ```
 
-## 3. Jenkinsfile 流水线
+## Jenkinsfile 流水线
 
 适配当前 Jenkins+K8s+Kaniko 环境
 
 放在项目根目录 `demo/Jenkinsfile`
 ```groovy
 pipeline {
-  agent {
-    kubernetes {
-      yaml """
+    agent {
+        kubernetes {
+            yaml """
 apiVersion: v1
 kind: Pod
 spec:
   containers:
+  - name: jnlp
+    image: jenkins/inbound-agent:jdk21
+    resources:
+      limits:
+        cpu: 2
+        memory: 2Gi
   - name: maven
-    image: maven:3.8.8-openjdk-17
+    image: maven:3.9.8-eclipse-temurin-17
     command: ['cat']
     tty: true
+    volumeMounts:
+    - name: maven-repo
+      mountPath: /root/.m2/repository
   - name: kaniko
-    image: gcr.io/kaniko-project/executor:v1.21.0-debug
+    image: gcr.io/kaniko-project/executor:v1.22.0-debug
     command: ['cat']
     tty: true
+    volumeMounts:
+    - name: harbor-auth
+      mountPath: /kaniko/.docker
   - name: kubectl
-    image: alpine/k8s:1.28.0
+    image: "alpine/k8s:1.28.0"
     command: ['cat']
     tty: true
+  volumes:
+  - name: harbor-auth
+    secret:
+      secretName: jenkins-harbor-secret
+  - name: maven-repo
+    persistentVolumeClaim:
+      claimName: maven-repo-pvc
 """
-    }
-  }
-  environment {
-    HARBOR_ADDR = "192.168.133.129:30002"
-    PROJECT = "spring_cloud_demo"
-    TAG = "v1"
-  }
-  stages {
-    stage('拉取代码') {
-      steps {
-        checkout scm
-      }
-    }
-    stage('Maven全模块打包') {
-      steps {
-        container('maven') {
-          sh 'mvn clean package -DskipTests'
         }
-      }
     }
-    stage('Kaniko构建镜像并推送Harbor') {
-      parallel {
-        stage('gateway') {
-          steps {
-            container('kaniko') {
-              sh '''
-/kaniko/executor \
---context="${pwd}/gateway-server" \
---dockerfile="${pwd}/gateway-server/Dockerfile" \
---destination=${HARBOR_ADDR}/${PROJECT}/gateway:${TAG} \
---insecure --skip-tls-verify
-'''
+    environment {
+        HARBOR_ADDR = "192.168.133.129:30002"
+        PROJECT = "spring_cloud_demo"
+        HARBOR_USER = "admin"
+        HARBOR_PWD = "Admin@123456"
+    }
+
+    stages {
+        stage('拉取代码') {
+            steps {
+                checkout scm
             }
-          }
         }
-        stage('user-service') {
-          steps {
-            container('kaniko') {
-              sh '''
-/kaniko/executor \
---context="${pwd}/user-service" \
---dockerfile="${pwd}/user-service/Dockerfile" \
---destination=${HARBOR_ADDR}/${PROJECT}/user-service:${TAG} \
---insecure --skip-tls-verify
-'''
+        stage('打印版本信息') {
+            steps {
+                script {
+                    def shortHash = sh(
+                            script: 'git rev-parse --short=8 HEAD',
+                            returnStdout: true
+                    ).trim()
+                    env.GIT_SHORT_COMMIT = shortHash
+                    echo "短Commit哈希：${env.GIT_SHORT_COMMIT}"
+                }
             }
-          }
         }
-        stage('order-service') {
-          steps {
-            container('kaniko') {
-              sh '''
-/kaniko/executor \
---context="${pwd}/order-service" \
---dockerfile="${pwd}/order-service/Dockerfile" \
---destination=${HARBOR_ADDR}/${PROJECT}/order-service:${TAG} \
---insecure --skip-tls-verify
-'''
+        stage('Maven全模块打包') {
+            steps {
+                container('maven') {
+                    sh 'mvn clean package -DskipTests'
+                }
             }
-          }
         }
-      }
-    }
-    stage('K8s部署应用') {
-      steps {
-        container('kubectl') {
-          sh '''
-apk add --no-cache gcompat
-kubectl apply -f k8s/gateway.yaml
-kubectl apply -f k8s/user-service.yaml
-kubectl apply -f k8s/order-service.yaml
-kubectl rollout status deployment/gateway
-kubectl rollout status deployment/user-service
-kubectl rollout status deployment/order-service
-'''
+        stage('Kaniko构建镜像并推送Harbor') {
+            steps {
+                // gateway 构建
+                container('kaniko') {
+                    sh '''
+              # 代理 大小写字段全部导出，golang库兼容
+              export HTTP_PROXY=http://192.168.133.1:7897
+              export HTTPS_PROXY=http://192.168.133.1:7897
+              export http_proxy=http://192.168.133.1:7897
+              export https_proxy=http://192.168.133.1:7897
+              export NO_PROXY=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
+              export no_proxy=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
+                 /kaniko/executor \
+                --context=`pwd`/gateway-server \
+                --dockerfile="Dockerfile" \
+                --destination=${HARBOR_ADDR}/${PROJECT}/gateway:${GIT_SHORT_COMMIT} \
+                --insecure --skip-tls-verify \
+                --cache=true \
+                --cache-repo=${HARBOR_ADDR}/${PROJECT}/kaniko-cache
+              '''
+                }
+
+                // user-service 构建
+                container('kaniko') {
+                    sh '''
+              # 代理 大小写字段全部导出，golang库兼容
+              export HTTP_PROXY=http://192.168.133.1:7897
+              export HTTPS_PROXY=http://192.168.133.1:7897
+              export http_proxy=http://192.168.133.1:7897
+              export https_proxy=http://192.168.133.1:7897
+              export NO_PROXY=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
+              export no_proxy=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
+                 /kaniko/executor \
+                --context=`pwd`/user-service \
+                --dockerfile="Dockerfile" \
+                --destination=${HARBOR_ADDR}/${PROJECT}/user-service:${GIT_SHORT_COMMIT} \
+                --insecure --skip-tls-verify \
+                --cache=true \
+                --cache-repo=${HARBOR_ADDR}/${PROJECT}/kaniko-cache
+              '''
+                }
+
+                // order-service 构建
+                container('kaniko') {
+                    sh '''
+              # 代理 大小写字段全部导出，golang库兼容
+              export HTTP_PROXY=http://192.168.133.1:7897
+              export HTTPS_PROXY=http://192.168.133.1:7897
+              export http_proxy=http://192.168.133.1:7897
+              export https_proxy=http://192.168.133.1:7897
+              export NO_PROXY=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
+              export no_proxy=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
+                 /kaniko/executor \
+                --context=`pwd`/order-service \
+                --dockerfile="Dockerfile" \
+                --destination=${HARBOR_ADDR}/${PROJECT}/order-service:${GIT_SHORT_COMMIT} \
+                --insecure --skip-tls-verify \
+                --cache=true \
+                --cache-repo=${HARBOR_ADDR}/${PROJECT}/kaniko-cache
+              '''
+                }
+            }
         }
-      }
+        stage('K8s部署应用') {
+            steps {
+                container('kubectl') {
+                    sh '''
+        # gateway
+        if kubectl get deployment gateway -n default >/dev/null 2>&1; then
+          echo "更新gateway镜像"
+          kubectl set image deployment/gateway gateway=192.168.133.129:30002/spring_cloud_demo/gateway:${GIT_SHORT_COMMIT} -n default
+        else
+          echo "首次部署，创建gateway资源"
+          sed "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/gateway.yaml | kubectl apply -f -
+        fi
+
+        # user-service
+        if kubectl get deployment user-service -n default >/dev/null 2>&1; then
+          echo "更新user-service镜像"
+          kubectl set image deployment/user-service user-service=192.168.133.129:30002/spring_cloud_demo/user-service:${GIT_SHORT_COMMIT} -n default
+        else
+          echo "首次部署，创建user-service资源"
+          sed "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/user-service.yaml | kubectl apply -f -
+        fi
+
+        # order-service
+        if kubectl get deployment order-service -n default >/dev/null 2>&1; then
+          echo "更新order-service镜像"
+          kubectl set image deployment/order-service order-service=192.168.133.129:30002/spring_cloud_demo/order-service:${GIT_SHORT_COMMIT} -n default
+        else
+          echo "首次部署，创建order-service资源"
+          sed "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/order-service.yaml | kubectl apply -f -
+        fi
+
+        # 等待所有deployment滚动完成
+        kubectl rollout status deployment/gateway --timeout=300s -n default
+        kubectl rollout status deployment/user-service --timeout=300s -n default
+        kubectl rollout status deployment/order-service --timeout=300s -n default
+
+        '''
+                }
+            }
+        }
     }
-  }
 }
+
 ```
 
-## 4. 项目目录
+## 项目目录
 ```text
 demo
 ├── gateway-server
@@ -332,7 +411,7 @@ demo
 └── README.md
 ```
 
-## 5. 部署验证命令
+## 部署验证命令
 ```shell
 # 查看所有pod
 kubectl get pods
@@ -345,7 +424,7 @@ kubectl exec -it deployment/order-service -- sh
 curl http://user-service
 ```
 
-## 6. checkout scm
+## 多分支流水线
 
 checkout scm 和 git url的区别？
 
@@ -372,6 +451,7 @@ checkout scm 和 git url的区别？
 ## 集群权限
 
 之前仅分配了Jenkins命名空间的部署权限，这里给集群级别的权限。
+注：后面又给Jenkins分配了default空间的各种权限，总之不管指定命名空间，还是全集群，加权限还是比较简单。
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -404,19 +484,55 @@ roleRef:
 kubectl apply -f rbac-jenkins-sa.yaml
 ```
 
-## 补充说明
+## 测试微服务
 
-### 版本：当前固定`v1`，正式环境建议用 git commit 短 hash 作为镜像 tag，避免覆盖旧镜像。
-```groovy
-  environment {
-    HARBOR_ADDR = "192.168.133.129:30002"
-    PROJECT = "spring_cloud_demo"
-    // 动态获取git 8位短commit hash
-    GIT_SHORT_COMMIT = sh(script: 'git rev-parse --short=8 HEAD', returnStdout: true).trim()
-  }
+gateway已经设置了NodePort 30080，任意集群地址加30080都能访问。 浏览器输入
+```shell
+http://192.168.133.129:30080/user-service/user/1
+```
+返回结果
+```json
+{
+    "id": 1,
+    "username": "张三",
+    "age": 20
+}
 ```
 
-2. 配置：把 SpringBoot 配置抽离到 ConfigMap/Secret，不要打包进镜像。
+测试服务间调用
+```shell
+http://192.168.133.129:30080/order-service/order/getUser/1
+```
+
+返回结果
+```text
+There was an unexpected error
+```
+
+进入order容器内部，执行命令，就知道是因为shiro拦截重定向了。
+```shell
+curl -v http://127.0.0.1:8082/order/getUser/1
+*   Trying 127.0.0.1:8082...
+* Established connection to 127.0.0.1 (127.0.0.1 port 8082) from 127.0.0.1 port 52074
+* using HTTP/1.x
+> GET /order/getUser/1 HTTP/1.1
+> Host: 127.0.0.1:8082
+> User-Agent: curl/8.18.0
+> Accept: */*
+>
+* Request completely sent off
+< HTTP/1.1 302
+< Set-Cookie: JSESSIONID=3A590A28F2150D3E3873B0C84D16206A; Path=/; HttpOnly
+< Location: http://127.0.0.1:8082/login;jsessionid=3A590A28F2150D3E3873B0C84D16206A
+< Content-Length: 0
+< Date: Sat, 12 Sep 2026 07:50:17 GMT
+<
+* Connection #0 to host 127.0.0.1:8082 left intact
+```
+
+## 补充说明
+
+3. 配置：把 SpringBoot 配置抽离到 ConfigMap/Secret，不要打包进镜像。
 
 
 3. 解释程序启动参数 +UseContainerSupport,MaxRAMPercentage=70.0，这里的内存限制与k8s的资源限制是什么关系？
@@ -426,6 +542,17 @@ kubectl apply -f rbac-jenkins-sa.yaml
 5. 网关用的nodeport，生产是不是建议类似ingress，目前主流是ngf？
 
 6. 既然Jenkinsfile放在了项目根目录，还需要拷贝到Jenkins流水线吗？
+
+1. **模块级增量构建**
+   增加判断：只有对应微服务目录代码变更，才构建、推送、部署该服务；没改动直接跳过，节省构建资源。
+2. **流水线增加后置校验**
+   发布成功后，自动调用网关接口做简单冒烟测试，确认业务接口可访问，而不只是等 pod 就绪。
+3. **发布回滚能力**
+   `kubectl rollout undo deployment/xxx`，流水线可以增加一键回滚 stage，发布异常时快速切回上一个稳定版本。
+4. **资源精细化管控**
+   你集群之前出现`Insufficient memory`，后续统一调整各微服务 requests/limits，避免节点内存不足导致 Pod 调度失败。
+5. **日志与监控接入**
+   Pod 日志已经输出到 stdout，可以接入 EFK；actuator 健康指标后续对接 Prometheus+Grafana 监控。
 
 ###  kaniko工作目录的两种写法
 ```text
@@ -470,7 +597,7 @@ FROM eclipse-temurin:17-jre
 FROM 192.168.133.129:30002/dockerio-proxy/eclipse-temurin:17-jre
 ```
 
-3、使用kaniko的cache参数
+3、使用kaniko的cache参数（设置了，感觉没用）
 ```text
 /kaniko/executor \
 --context=`pwd`/gateway-server \
