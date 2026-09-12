@@ -369,6 +369,41 @@ checkout scm 和 git url的区别？
 
 具体怎么设置比较简单，在Jenkins网页点几下就可以了，真正要写的是项目中的Jenkinsfile。
 
+## 集群权限
+
+之前仅分配了Jenkins命名空间的部署权限，这里给集群级别的权限。
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: jenkins-deploy-manager
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+- apiGroups: [""]
+  resources: ["pods", "services"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: jenkins-deploy-manager-binding
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: jenkins
+roleRef:
+  kind: ClusterRole
+  name: jenkins-deploy-manager
+  apiGroup: rbac.authorization.k8s.io
+```
+
+```shell
+kubectl apply -f rbac-jenkins-sa.yaml
+```
+
 ## 补充说明
 
 ### 版本：当前固定`v1`，正式环境建议用 git commit 短 hash 作为镜像 tag，避免覆盖旧镜像。

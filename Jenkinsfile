@@ -43,7 +43,21 @@ spec:
   environment {
     HARBOR_ADDR = "192.168.133.129:30002"
     PROJECT = "spring_cloud_demo"
+    HARBOR_USER = "admin"
+    HARBOR_PWD = "Admin@123456"
   }
+
+  // 函数：判断harbor镜像tag是否存在，返回true/false
+  def harborImageExists(String imageName, String tag) {
+      def auth = "${HARBOR_USER}:${HARBOR_PWD}".getBytes().encodeBase64().toString()
+      def apiUrl = "http://${HARBOR_ADDR}/api/v2.0/projects/${HARBOR_PROJECT}/repositories/${imageName}/artifacts?tag=${tag}"
+      def ret = sh script: """
+      curl -s -k -H "Authorization: Basic ${auth}" ${apiUrl}
+      """, returnStdout: true
+      // 返回的json数组不为空，则代表tag存在
+      return ret.trim() != "[]"
+  }
+
   stages {
     stage('拉取代码') {
       steps {
@@ -74,23 +88,31 @@ spec:
         stage('gateway') {
           steps {
             container('kaniko') {
-              sh '''
-              # 代理 大小写字段全部导出，golang库兼容
-              export HTTP_PROXY=http://192.168.133.1:7897
-              export HTTPS_PROXY=http://192.168.133.1:7897
-              export http_proxy=http://192.168.133.1:7897
-              export https_proxy=http://192.168.133.1:7897
-              export NO_PROXY=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
-              export no_proxy=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
+                script {
+                  String imgName = "gateway"
+                  if (harborImageExists(imgName, GIT_COMMIT_SHORT)) {
+                      echo "✅ 镜像 ${HARBOR_ADDR}/${HARBOR_PROJECT}/${imgName}:${GIT_COMMIT_SHORT} 已存在，跳过构建推送"
+                  } else {
+                  sh '''
+                      echo "🔍 镜像不存在，开始构建推送 ${imgName}"
+                      # 代理 大小写字段全部导出，golang库兼容
+                      export HTTP_PROXY=http://192.168.133.1:7897
+                      export HTTPS_PROXY=http://192.168.133.1:7897
+                      export http_proxy=http://192.168.133.1:7897
+                      export https_proxy=http://192.168.133.1:7897
+                      export NO_PROXY=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
+                      export no_proxy=localhost,127.0.0.1,192.168.133.0/24,10.96.0.0/12,10.244.0.0/16,.svc,.cluster.local
 
-                /kaniko/executor \
-                --context=`pwd`/gateway-server \
-                --dockerfile="Dockerfile" \
-                --destination=${HARBOR_ADDR}/${PROJECT}/gateway:${GIT_SHORT_COMMIT} \
-                --insecure --skip-tls-verify \
-                --cache=true \
-                --cache-repo=${HARBOR_ADDR}/${PROJECT}/kaniko-cache \
-'''
+                        /kaniko/executor \
+                        --context=`pwd`/gateway-server \
+                        --dockerfile="Dockerfile" \
+                        --destination=${HARBOR_ADDR}/${PROJECT}/gateway:${GIT_SHORT_COMMIT} \
+                        --insecure --skip-tls-verify \
+                        --cache=true \
+                        --cache-repo=${HARBOR_ADDR}/${PROJECT}/kaniko-cache \
+                  '''
+                }
+              }
             }
           }
         }
