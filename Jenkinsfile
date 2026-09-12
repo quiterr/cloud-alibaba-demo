@@ -145,8 +145,7 @@ spec:
           kubectl set image deployment/gateway gateway=192.168.133.129:30002/spring_cloud_demo/gateway:${GIT_SHORT_COMMIT} -n default
         else
           echo "首次部署，创建gateway资源"
-          sed -i "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/gateway.yaml
-          kubectl apply -f k8s/gateway.yaml
+          sed "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/gateway.yaml | kubectl apply -f -
         fi
 
         # user-service
@@ -155,8 +154,7 @@ spec:
           kubectl set image deployment/user-service user-service=192.168.133.129:30002/spring_cloud_demo/user-service:${GIT_SHORT_COMMIT} -n default
         else
           echo "首次部署，创建user-service资源"
-          sed -i "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/user-service.yaml
-          kubectl apply -f k8s/user-service.yaml
+          sed "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/user-service.yaml | kubectl apply -f -
         fi
 
         # order-service
@@ -165,8 +163,7 @@ spec:
           kubectl set image deployment/order-service order-service=192.168.133.129:30002/spring_cloud_demo/order-service:${GIT_SHORT_COMMIT} -n default
         else
           echo "首次部署，创建order-service资源"
-          sed -i "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/order-service.yaml
-          kubectl apply -f k8s/order-service.yaml
+          sed "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/order-service.yaml | kubectl apply -f -
         fi
 
         # 等待所有deployment滚动完成
