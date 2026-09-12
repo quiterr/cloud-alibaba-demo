@@ -73,6 +73,7 @@ spec:
       }
     }
     stage('Kaniko构建镜像并推送Harbor') {
+      parallel {
         stage('gateway') {
           steps {
             container('kaniko') {
@@ -184,6 +185,7 @@ spec:
         kubectl rollout status deployment/order-service --timeout=180s
 
         '''
+        }
       }
     }
   }
