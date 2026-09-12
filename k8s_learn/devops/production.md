@@ -311,7 +311,7 @@ kubectl rollout status deployment/order-service
 }
 ```
 
-## 4. 目录最终整理
+## 4. 项目目录
 ```text
 demo
 ├── gateway-server
@@ -406,7 +406,7 @@ WORKSPACE_DIR="/home/jenkins/agent/workspace/spring_cloud_scm_${BRANCH_NAME}"
 
 1、第一种方案，手动下载镜像并推送
 ```shell
-# 拉取镜像
+# 拉取镜像，需要给shell加代理
 ctr -n k8s.io images pull --platform linux/amd64 docker.io/library/eclipse-temurin:17-jre
 # 拉完验证
 ctr -n k8s.io images list | grep eclipse
@@ -414,7 +414,6 @@ ctr -n k8s.io images list | grep eclipse
 ctr -n k8s.io images tag docker.io/library/eclipse-temurin:17-jre 192.168.133.129:30002/spring_cloud_demo/eclipse-temurin:17-jre
 # 推送
 ctr -n k8s.io images push --platform linux/amd64 --plain-http -u admin:Admin@123456 192.168.133.129:30002/spring_cloud_demo/eclipse-temurin:17-jre
-
 ```
 
 2、第二种方案：Harbor 创建代理缓存项目
@@ -436,6 +435,10 @@ FROM eclipse-temurin:17-jre
 FROM 192.168.133.129:30002/dockerio-proxy/eclipse-temurin:17-jre
 ```
 
+3、使用kaniko的cache参数
+```text
+
+```
 
 
 
