@@ -149,17 +149,42 @@ spec:
       steps {
         container('kubectl') {
           sh '''
+        # gateway
+        if kubectl get deployment gateway -n default >/dev/null 2>&1; then
+          echo "更新gateway镜像"
+          kubectl set image deployment/gateway gateway=192.168.133.129:30002/spring_cloud_demo/gateway:${GIT_SHORT_COMMIT} -n default
+        else
+          echo "首次部署，创建gateway资源"
+          sed -i "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/gateway-deploy.yaml
+          kubectl apply -f k8s/gateway-deploy.yaml
+        fi
 
-kubectl set image deployment/gateway gateway=192.168.133.129:30002/spring_cloud_demo/gateway:${GIT_SHORT_COMMIT}
-kubectl set image deployment/user-service user-service=192.168.133.129:30002/spring_cloud_demo/user-service:${GIT_SHORT_COMMIT}
-kubectl set image deployment/order-service order-service=192.168.133.129:30002/spring_cloud_demo/order-service:${GIT_SHORT_COMMIT}
+        # user-service
+        if kubectl get deployment user-service -n default >/dev/null 2>&1; then
+          echo "更新user-service镜像"
+          kubectl set image deployment/user-service user-service=192.168.133.129:30002/spring_cloud_demo/user-service:${GIT_SHORT_COMMIT} -n default
+        else
+          echo "首次部署，创建user-service资源"
+          sed -i "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/user-service-deploy.yaml
+          kubectl apply -f k8s/user-service-deploy.yaml
+        fi
 
-# 等待所有deployment滚动完成
-kubectl rollout status deployment/gateway --timeout=180s
-kubectl rollout status deployment/user-service --timeout=180s
-kubectl rollout status deployment/order-service --timeout=180s
+        # order-service
+        if kubectl get deployment order-service -n default >/dev/null 2>&1; then
+          echo "更新order-service镜像"
+          kubectl set image deployment/order-service order-service=192.168.133.129:30002/spring_cloud_demo/order-service:${GIT_SHORT_COMMIT} -n default
+        else
+          echo "首次部署，创建order-service资源"
+          sed -i "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/order-service-deploy.yaml
+          kubectl apply -f k8s/order-service-deploy.yaml
+        fi
 
-'''
+        # 等待所有deployment滚动完成
+        kubectl rollout status deployment/gateway --timeout=180s
+        kubectl rollout status deployment/user-service --timeout=180s
+        kubectl rollout status deployment/order-service --timeout=180s
+
+        '''
         }
       }
     }
