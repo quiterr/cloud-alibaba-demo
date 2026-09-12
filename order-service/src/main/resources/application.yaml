@@ -17,7 +17,7 @@ server:
 powerjob:
   worker:
     app-name: test
-    server-address: 127.0.0.1:7700  # PowerJob服务端地址
+    server-address: 192.168.133.1:7700  # PowerJob服务端地址
     protocol: http
     store-strategy: disk
     max-result-length: 4096
