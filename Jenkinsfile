@@ -47,17 +47,6 @@ spec:
     HARBOR_PWD = "Admin@123456"
   }
 
-  // 函数：判断harbor镜像tag是否存在，返回true/false
-  def harborImageExists(String imageName, String tag) {
-      def auth = "${HARBOR_USER}:${HARBOR_PWD}".getBytes().encodeBase64().toString()
-      def apiUrl = "http://${HARBOR_ADDR}/api/v2.0/projects/${HARBOR_PROJECT}/repositories/${imageName}/artifacts?tag=${tag}"
-      def ret = sh script: """
-      curl -s -k -H "Authorization: Basic ${auth}" ${apiUrl}
-      """, returnStdout: true
-      // 返回的json数组不为空，则代表tag存在
-      return ret.trim() != "[]"
-  }
-
   stages {
     stage('拉取代码') {
       steps {
@@ -89,6 +78,17 @@ spec:
           steps {
             container('kaniko') {
                 script {
+                  // 函数：判断harbor镜像tag是否存在，返回true/false
+                  def harborImageExists(String imageName, String tag) {
+                      def auth = "${HARBOR_USER}:${HARBOR_PWD}".getBytes().encodeBase64().toString()
+                      def apiUrl = "http://${HARBOR_ADDR}/api/v2.0/projects/${HARBOR_PROJECT}/repositories/${imageName}/artifacts?tag=${tag}"
+                      def ret = sh script: """
+                      curl -s -k -H "Authorization: Basic ${auth}" ${apiUrl}
+                      """, returnStdout: true
+                      // 返回的json数组不为空，则代表tag存在
+                      return ret.trim() != "[]"
+                  }
+
                   String imgName = "gateway"
                   if (harborImageExists(imgName, GIT_COMMIT_SHORT)) {
                       echo "✅ 镜像 ${HARBOR_ADDR}/${HARBOR_PROJECT}/${imgName}:${GIT_COMMIT_SHORT} 已存在，跳过构建推送"
