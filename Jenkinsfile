@@ -89,8 +89,8 @@ spec:
             container('kaniko') {
                 script {
                   String imgName = "gateway"
-                  if (harborImageExists(imgName, GIT_COMMIT_SHORT)) {
-                      echo "✅ 镜像 ${HARBOR_ADDR}/${PROJECT}/${imgName}:${GIT_COMMIT_SHORT} 已存在，跳过构建推送"
+                  if (harborImageExists(imgName, env.GIT_SHORT_COMMIT)) {
+                      echo "✅ 镜像 ${HARBOR_ADDR}/${PROJECT}/${imgName}:${env.GIT_SHORT_COMMIT} 已存在，跳过构建推送"
                   } else {
                   sh '''
                       echo "🔍 镜像不存在，开始构建推送 ${imgName}"
@@ -173,9 +173,9 @@ kubectl set image deployment/user-service user-service=192.168.133.129:30002/spr
 kubectl set image deployment/order-service order-service=192.168.133.129:30002/spring_cloud_demo/order-service:${GIT_SHORT_COMMIT}
 
 # 等待所有deployment滚动完成
-kubectl rollout status deployment/gateway
-kubectl rollout status deployment/user-service
-kubectl rollout status deployment/order-service
+kubectl rollout status deployment/gateway --timeout=180s
+kubectl rollout status deployment/user-service --timeout=180s
+kubectl rollout status deployment/order-service --timeout=180s
 
 '''
         }
