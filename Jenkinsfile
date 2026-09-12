@@ -156,7 +156,7 @@ spec:
         else
           echo "首次部署，创建gateway资源"
           sed -i "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/gateway-deploy.yaml
-          kubectl apply -f k8s/gateway-deploy.yaml
+          kubectl apply -f k8s/gateway.yaml
         fi
 
         # user-service
@@ -166,7 +166,7 @@ spec:
         else
           echo "首次部署，创建user-service资源"
           sed -i "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/user-service-deploy.yaml
-          kubectl apply -f k8s/user-service-deploy.yaml
+          kubectl apply -f k8s/user-service.yaml
         fi
 
         # order-service
@@ -176,7 +176,7 @@ spec:
         else
           echo "首次部署，创建order-service资源"
           sed -i "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/order-service-deploy.yaml
-          kubectl apply -f k8s/order-service-deploy.yaml
+          kubectl apply -f k8s/order-service.yaml
         fi
 
         # 等待所有deployment滚动完成
