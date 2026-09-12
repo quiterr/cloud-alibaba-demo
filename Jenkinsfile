@@ -167,9 +167,9 @@ spec:
         fi
 
         # 等待所有deployment滚动完成
-        kubectl rollout status deployment/gateway --timeout=180s
-        kubectl rollout status deployment/user-service --timeout=180s
-        kubectl rollout status deployment/order-service --timeout=180s
+        kubectl rollout status deployment/gateway --timeout=180s -n default
+        kubectl rollout status deployment/user-service --timeout=180s -n default
+        kubectl rollout status deployment/order-service --timeout=180s -n default
 
         '''
         }
