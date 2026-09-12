@@ -699,15 +699,25 @@ Jenkins slave Pod 默认用`default` sa，权限不足，需要创建 RBAC：
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  namespace: default # 你的业务应用部署namespace，改成实际
+  namespace: default
   name: jenkins-deploy-role
 rules:
-- apiGroups: ["apps"]
-  resources: ["deployments"]
-  verbs: ["get", "list", "update", "patch"]
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get","list"]
+  # 管理deployment：创建/查询/更新/删除
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  # 管理service：创建/查询/更新/删除
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  # 可选：查看pod、rollout状态（流水线等待滚动更新需要）
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get","list"]
+  # 可选：rollout status 底层需要访问replicasets
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -715,9 +725,9 @@ metadata:
   name: jenkins-deploy-rb
   namespace: default
 subjects:
-- kind: ServiceAccount
-  name: default
-  namespace: jenkins # jenkins agent所在namespace
+  - kind: ServiceAccount
+    name: default
+    namespace: jenkins
 roleRef:
   kind: Role
   name: jenkins-deploy-role
@@ -725,7 +735,12 @@ roleRef:
 ```
 
 ```shell
-kubectl apply -f jenkins-deploy-rbac.yaml
+# 先删除旧的role&rolebinding
+kubectl delete role jenkins-deploy-role -n default
+kubectl delete rolebinding jenkins-deploy-rb -n default
+
+# 应用新权限
+kubectl apply -f rbac-jenkins-deploy.yaml
 ```
 
 ### 流水线补充部署代码
