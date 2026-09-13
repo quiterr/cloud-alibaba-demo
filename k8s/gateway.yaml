@@ -4,7 +4,7 @@ metadata:
   name: gateway
   namespace: default
 spec:
-  replicas: 1
+  replicas: 2 # 修改：生产至少2副本
   selector:
     matchLabels:
       app: gateway
@@ -13,6 +13,17 @@ spec:
       labels:
         app: gateway
     spec:
+      # ========== 新增 Pod 反亲和性 ==========
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - gateway
+              topologyKey: kubernetes.io/hostname
       containers:
         - name: gateway
           image: 192.168.133.129:30002/spring_cloud_demo/gateway:placeholder
@@ -25,6 +36,10 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "1000m"
+          # JVM启动参数
+          env:
+            - name: JAVA_OPTS
+              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=70.0 -XX:MaxMetaspaceSize=256m"
           readinessProbe:
             httpGet:
               path: /actuator/health
@@ -51,3 +66,24 @@ spec:
     - port: 80
       targetPort: 8080
       nodePort: 30080
+---
+# ========== 新增 HPA 自动扩缩容 ==========
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gateway
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gateway
+  minReplicas: 2  # 最小副本保底，和deployment初始副本保持一致
+  maxReplicas: 4  # 最大扩容上限，3节点集群最多扩到4个
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

@@ -9,8 +9,8 @@ gateway-server/Dockerfile
 FROM 192.168.133.129:30002/spring_cloud_demo/eclipse-temurin:17-jre
 WORKDIR /app
 COPY target/gateway-server-0.0.1-SNAPSHOT.jar app.jar
-# JVM参数，生产推荐配置
-ENTRYPOINT ["java","-XX:+UseContainerSupport","-XX:MaxRAMPercentage=70.0","-jar","app.jar"]
+# JVM参数，生产推荐配置，JAVA_OPTS后续由k8s yaml传入
+ENTRYPOINT ["sh","-c","java $JAVA_OPTS -jar app.jar"]
 ```
 
 order-service/Dockerfile
@@ -18,7 +18,7 @@ order-service/Dockerfile
 FROM 192.168.133.129:30002/spring_cloud_demo/eclipse-temurin:17-jre
 WORKDIR /app
 COPY target/order-service-0.0.1-SNAPSHOT.jar app.jar
-ENTRYPOINT ["java","-XX:+UseContainerSupport","-XX:MaxRAMPercentage=70.0","-jar","app.jar"]
+ENTRYPOINT ["sh","-c","java $JAVA_OPTS -jar app.jar"]
 ```
 
 user-service/Dockerfile
@@ -26,7 +26,7 @@ user-service/Dockerfile
 FROM 192.168.133.129:30002/spring_cloud_demo/eclipse-temurin:17-jre
 WORKDIR /app
 COPY target/user-service-0.0.1-SNAPSHOT.jar app.jar
-ENTRYPOINT ["java","-XX:+UseContainerSupport","-XX:MaxRAMPercentage=70.0","-jar","app.jar"]
+ENTRYPOINT ["sh","-c","java $JAVA_OPTS -jar app.jar"]
 ```
 
 ## K8s YAML
@@ -530,14 +530,136 @@ curl -v http://127.0.0.1:8082/order/getUser/1
 * Connection #0 to host 127.0.0.1:8082 left intact
 ```
 
+## 公司生产环境资源配置
+由于只有3台ECS，和家里一样的只有2个worker，那么replicas就是2。 每台ECS有8核16G内存。
+
+> 资源分配原则：
+> 1. 预留节点系统开销：每台 ECS 预留 **1 核 + 2G 内存** 给操作系统、containerd、kubelet、calico 网络组件，不交给 Pod 调度
+     单节点可分配给 Pod 资源：**7 核，14Gi**
+     3 节点总可调度资源：`21核，42Gi`
+> 2. A、B 是流量大头，资源倾斜；C、D 轻量，资源小。
+> 3. 所有服务副本≥2，pod 反亲和，分散在不同 ECS，单 ECS 宕机业务不中断。
+> 4. requests 是调度预留，limits 是硬上限；JVM 使用`MaxRAMPercentage=70%`。
+
+各服务资源规格（容器 requests /limits）
+
+| 服务 | 副本数 | CPU(request/limit) | 内存 (request/limit) | 说明 |
+| ---- | ---- | ---- | ---- | ---- |
+| gateway 网关 | 2 | 200m / 1000m | 512Mi / 1Gi | 网关，流量转发，压力随整体流量变化，2副本跨节点 |
+| A 服务（45% 流量） | 2 | 1000m / 2500m | 1Gi / 2Gi | 核心业务，占流量 45%，堆内存充足 |
+| B 服务（45% 流量） | 2 | 1000m / 2500m | 1Gi / 2Gi | 核心业务，和 A 同等规格 |
+| C 服务（5% 流量） | 2 | 200m / 500m | 256Mi / 512Mi | 轻量附属服务 |
+| D 服务（5% 流量） | 2 | 200m / 500m | 256Mi / 512Mi | 轻量附属服务 |
+
+**汇总统计**
+
+总副本数量：`2+2+2+2+2 = 10个Pod`
+
+- 全部 Pod requests 总和：
+  CPU：0.2 + 1.0 +1.0 +0.2 +0.2 = 2.6 核 ×2 副本 = **5.2 核**
+  内存：0.5 +1+1+0.25+0.25 =3Gi ×2 副本 = **6Gi**
+
+>
+> requests 是调度保底，总和很小，3 节点完全足够调度。
+
+- 全部 Pod limits 峰值总和：
+  CPU：(1 +2.5+2.5+0.5+0.5) × 2 = **14 核**
+  内存：(1+2+2+0.5+0.5) ×2 = **12Gi**
+
+👉 集群可调度资源 21 核 / 42Gi，峰值 limits 总和 14 核、12Gi，**资源富余**，预留余量应对流量波动，同时方便后续开启 HPA 扩容。
+
+**1）节点资源预留，一定要配置 K8s 节点预留**
+每台节点 kubelet 配置预留：
+```yaml
+kubeReserved:
+  cpu: "1000m"
+  memory: "2Gi"
+systemReserved:
+  cpu: "0"
+  memory: "0"
+```
+防止业务 Pod 吃光整机资源，导致 kubelet/containerd 卡死节点。
+
+**2）资源规格微调备选方案（如果后续压测发现 A/B 压力更大）**
+
+如果压测 A、B 服务 CPU 持续高，可以把 A/B 调整为 `requests:1.5核，limit:3核，内存request:1.5Gi limit:2.5Gi`。
+
+**3）集群资源余量**
+
+当前方案业务 limits 总内存 12Gi，总 CPU14 核；集群可用 21 核、42Gi。
+富余资源可以：
+
+- 部署监控组件：Prometheus+Grafana
+- 日志组件：EFK
+- Harbor、Jenkins 可以单独部署或者剥离到别的机器，**不要和业务混跑抢占资源**
+
+## JVM启动参数
+
+### UseContainerSupport
+
+**`+UseContainerSupport`**：开启容器内存识别。
+JVM 不再读取宿主机整机内存，而是**读取容器 cgroup 的内存限额（就是 K8s 配置的`resources.limits.memory`）**。
+
+### MaxRAMPercentage
+
+**`MaxRAMPercentage=70.0`**：JVM 堆最大内存 = **容器 limit 内存 × 70%**
+
+**内存划分拆解（非常关键，很多人踩坑）**
+
+容器总内存上限 `1Gi` 包含**全部进程内存**：
+
+1. JVM 堆内存（Xmx，716M，`MaxRAMPercentage`控制）
+2. JVM 非堆内存：元空间 (Metaspace)、JVM 线程栈、堆外内存 DirectBuffer、JNI、共享库
+3. 你的 Spring 应用代码、第三方依赖、Shiro、Netty、文件缓冲区等**堆外占用**
+
+> ⚠️ 坑：**MaxRAMPercentage 算的只是堆，不是 JVM 全部内存**
+> 容器 limit = Xmx + 元空间 + 线程栈 + 堆外内存 + 操作系统开销
+> 所以不能把 MaxRAMPercentage 设成 95%，很容易容器内存打爆，被 k8s OOM kill。
+> 一般生产推荐 **60~75%**，你现在 70% 是合理区间。
+
+### MaxMetaspaceSize
+`-XX:MaxMetaspaceSize=256m`限制元空间 (Metaspace) 最大占用内存为 256MB
+> JDK8+ 废除永久代 (PermGen)，换成 Metaspace（元空间），**元空间存放类的字节码、类信息、方法、常量池**。
+元空间默认**没有上限**，不限制的话，代码 / 类加载泄漏会无限吃内存，最终触发容器 OOM 杀死 Pod。
+
+Prometheus 采集`jvm_metadata_space_used`，设置告警，元空间使用率超过 80% 提前预警，不用等到崩了才发现。
+
+### 生产环境replicas设置
+**1、集群节点数量限制**
+
+副本数不能超过可用节点数。比如你集群只有 2 个 worker 节点，最多 2 副本做跨节点高可用。
+
+**2、滚动更新策略配合 replicas**
+
+```yaml
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1 # 滚动升级时，可以比期望副本数再多启动 1 个新 Pod
+    maxUnavailable: 0
+```
+
+`maxUnavailable:0`：滚动发布的时候，**先拉起新 Pod，新 Pod 就绪后才销毁旧 Pod**，零停机发布。
+> 如果 replicas=2，滚动过程中最多同时存在 3 个 Pod（2 旧 + 1 新），注意预留集群内存 CPU 资源。
+
+**3、有状态服务（数据库、Redis）不适用这套**
+上面说的全部是**无状态微服务**（gateway/order/user 都是无状态）。
+有状态服务（mysql、redis）不能简单靠副本，要用 StatefulSet。
+
+**4、关于资源开销**
+每个service limit 内存 1Gi，2 副本就预留 2G 内存。
+不要盲目设置很大副本数，结合集群资源预算。
+
+**5、关于家里的试验环境**
+家里只有2个node节点。
+- gateway：`replicas:2` + pod 反亲和，两个 Pod 分别落在 node1、node2
+- order-service：`replicas:2` + pod 反亲和
+- user-service：`replicas:2` + pod 反亲和
+  后续上 HPA，minReplicas=2。
+
 ## 补充说明
 
 3. 配置：把 SpringBoot 配置抽离到 ConfigMap/Secret，不要打包进镜像。
-
-
-3. 解释程序启动参数 +UseContainerSupport,MaxRAMPercentage=70.0，这里的内存限制与k8s的资源限制是什么关系？
-
-4. 生产环境replicas: 1副本设置为多少比较合适？
 
 5. 网关用的nodeport，生产是不是建议类似ingress，目前主流是ngf？
 
