@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: order-service
+  name: user-service
   namespace: default
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: order-service
+      app: user-service
   template:
     metadata:
       labels:
-        app: order-service
+        app: user-service
     spec:
       containers:
-        - name: order-service
-          image: 192.168.133.129:30002/spring_cloud_demo/order-service:placeholder
+        - name: user-service
+          image: user-service
           ports:
-            - containerPort: 8082
+            - containerPort: 8081
           resources:
             requests:
               memory: "512Mi"
@@ -25,28 +25,32 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "1000m"
+          # JVM启动参数
+          env:
+            - name: JAVA_OPTS
+              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=70.0 -XX:MaxMetaspaceSize=256m"
           readinessProbe:
             httpGet:
               path: /actuator/health
-              port: 8082
+              port: 8081
             initialDelaySeconds: 20
             periodSeconds: 5
           livenessProbe:
             httpGet:
               path: /actuator/health
-              port: 8082
+              port: 8081
             initialDelaySeconds: 30
             periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: order-service
+  name: user-service
   namespace: default
 spec:
   type: ClusterIP
   selector:
-    app: order-service
+    app: user-service
   ports:
     - port: 80
-      targetPort: 8082
+      targetPort: 8081
