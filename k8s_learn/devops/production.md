@@ -758,7 +758,7 @@ gateway-7fbd55567f-nkxds         1/1     Running   0             4m20s
 order-service-5df4496599-8nsv5   0/1     Running   1 (49s ago)   4m20s
 user-service-5d94d95757-7v754    0/1     Running   1 (69s ago)   4m20s
 ```
-**探针检查并不是根因，根因是内存不够，后面把gateway副本改成1就正常了。**
+**探针检查并不是根因，根因有两个，一是内存不够导致启动特别慢，后面把gateway副本改成1了；二是user和order的端口配成和gateway一样了**
 
 ## 清理命令
 
