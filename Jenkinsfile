@@ -11,7 +11,7 @@ spec:
     resources:
       limits:
         cpu: 2
-        memory: 2Gi
+        memory: 1Gi
   - name: maven
     image: maven:3.9.8-eclipse-temurin-17
     command: ['cat']
@@ -168,8 +168,8 @@ kubectl get deploy gateway -n default
 
 # 等待所有deployment滚动完成
 kubectl rollout status deployment/gateway --timeout=300s -n default
-# kubectl rollout status deployment/user-service --timeout=300s -n default
-# kubectl rollout status deployment/order-service --timeout=300s -n default
+kubectl rollout status deployment/user-service --timeout=300s -n default
+kubectl rollout status deployment/order-service --timeout=300s -n default
 
         '''
         }

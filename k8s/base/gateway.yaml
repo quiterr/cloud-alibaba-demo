@@ -4,7 +4,7 @@ metadata:
   name: gateway
   namespace: default
 spec:
-  replicas: 2 # 修改：生产至少2副本
+  replicas: 1 # 修改：生产至少2副本
   selector:
     matchLabels:
       app: gateway
