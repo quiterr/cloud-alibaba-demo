@@ -722,6 +722,29 @@ FROM 192.168.133.129:30002/dockerio-proxy/eclipse-temurin:17-jre
 --cache-repo=${HARBOR_ADDR}/${PROJECT}/kaniko-cache \
 ```
 
+## 遇到的难题
+
+程序一直在CrashLoopBackOff（崩溃）
+```shell
+[root@k8s-node1 ~]# kubectl get pods
+NAME                               READY   STATUS             RESTARTS         AGE
+gateway-5ddf8f688c-l2n6h           0/1     Running            8 (5m39s ago)    19m
+gateway-5ddf8f688c-ntm22           0/1     CrashLoopBackOff   7 (82s ago)      15m
+```
+
+查看pod事件，是由于探针检查失败
+```shell
+  Warning  Unhealthy         15m (x3 over 15m)    kubelet            Liveness probe failed: Get "http://10.244.107.207:8080/actuator/health": dial tcp 10.244.107.207:8080: connect: connection refused
+  Warning  Unhealthy         11m (x39 over 16m)   kubelet            Readiness probe failed: Get "http://10.244.107.207:8080/actuator/health": dial tcp 10.244.107.207:8080: connect: connection refused
+  Warning  BackOff           84s (x26 over 7m8s)  kubelet            Back-off restarting failed container gateway in pod gateway-5ddf8f688c-ntm22_default(ff8013a3-b873-4c99-a258-d539126053a9)
+```
+
+查看程序日志，已经启动成功了，但是日志没有一直刷，而是停止打印了，说明被k8s干掉了。原因是探针在启动后20秒检查，程序却用了79秒才启动成功。
+```shell
+2026-09-13T13:10:18.167Z  INFO 7 --- [gateway-server] [           main] c.e.g.GatewayServerApplication           : Started GatewayServerApplication in 79.201 seconds (process running for 86.149)
+```
+
+Liveness探针达到failureThreshold次数后就会重启pod，而Readiness不会，失败后只是标记为未就绪，不让流量进来，Readiness会继续探测，一旦成功就会标记为就绪。
 
 
 

@@ -142,7 +142,7 @@ spec:
 cat > k8s/overlays/dev/kustomization.yaml <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
+resources:
   - ../../base
 images:
   - name: gateway
