@@ -663,12 +663,13 @@ strategy:
 
 ## 补充说明
 
-3. 配置：把 SpringBoot 配置抽离到 ConfigMap/Secret，不要打包进镜像。
+1、配置：把 SpringBoot 配置抽离到 ConfigMap/Secret，不要打包进镜像。
 
-5. 网关用的nodeport，生产是不是建议类似ingress，目前主流是ngf？
+2、网关用的nodeport，生产是不是建议类似ingress，目前主流是ngf？
 
-3. **发布回滚能力**
-   `kubectl rollout undo deployment/xxx`，流水线可以增加一键回滚 stage，发布异常时快速切回上一个稳定版本。
+3、发布回滚能力
+
+`kubectl rollout undo deployment/xxx`，流水线可以增加一键回滚 stage，发布异常时快速切回上一个稳定版本。
 
 
 ###  kaniko工作目录的两种写法
