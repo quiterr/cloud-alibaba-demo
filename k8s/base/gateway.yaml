@@ -80,8 +80,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: gateway
-  minReplicas: 2  # 最小副本保底，和deployment初始副本保持一致
-  maxReplicas: 4  # 最大扩容上限，3节点集群最多扩到4个
+  minReplicas: 1  # 最小副本保底，和deployment初始副本保持一致
+  maxReplicas: 1  # 最大扩容上限，3节点集群最多扩到4个
   metrics:
     - type: Resource
       resource:
