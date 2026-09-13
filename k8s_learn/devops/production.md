@@ -486,9 +486,16 @@ kubectl apply -f rbac-jenkins-sa.yaml
 
 ## 测试微服务
 
-测试启动参数
+测试启动参数，看到`JAVA_OPTS`和yaml中一样，说明生效了。
 ```shell
+[root@k8s-node1 ~]# kubectl exec -it gateway-7f4844b55b-4dm9g -n default -- cat /proc/1/cmdline
+sh-cjava $JAVA_OPTS -jar app.jar
 
+[root@k8s-node1 ~]# kubectl exec -it gateway-7f4844b55b-4dm9g -n default -- env | grep -i java
+PATH=/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+JAVA_HOME=/opt/java/openjdk
+JAVA_VERSION=jdk-17.0.20+8
+JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=70.0 -XX:MaxMetaspaceSize=256m
 ```
 
 gateway已经设置了NodePort 30080，任意集群地址加30080都能访问。 浏览器输入
