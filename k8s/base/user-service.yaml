@@ -20,15 +20,15 @@ spec:
             - containerPort: 8081
           resources:
             requests:
-              memory: "128Mi"
+              memory: "256Mi"
               cpu: "100m"
             limits:
-              memory: "256Gi"
+              memory: "384Mi"
               cpu: "200m"
           # JVM启动参数
           env:
             - name: JAVA_OPTS
-              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=70.0 -XX:MaxMetaspaceSize=256m"
+              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=70.0 -XX:MaxMetaspaceSize=128m"
           readinessProbe:
             httpGet:
               path: /actuator/health
