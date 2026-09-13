@@ -718,6 +718,10 @@ rules:
   - apiGroups: ["apps"]
     resources: ["replicasets"]
     verbs: ["get", "list"]
+  # ========== 新增这一段 HPA 权限 ==========
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -740,7 +744,7 @@ kubectl delete role jenkins-deploy-role -n default
 kubectl delete rolebinding jenkins-deploy-rb -n default
 
 # 应用新权限
-kubectl apply -f rbac-jenkins-deploy.yaml
+kubectl apply -f jenkins-deploy-rbac.yaml
 ```
 
 ### 流水线补充部署代码

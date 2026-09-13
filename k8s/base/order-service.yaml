@@ -20,11 +20,11 @@ spec:
             - containerPort: 8082
           resources:
             requests:
-              memory: "512Mi"
-              cpu: "200m"
+              memory: "128Mi"
+              cpu: "100m"
             limits:
-              memory: "1Gi"
-              cpu: "1000m"
+              memory: "256Gi"
+              cpu: "200m"
           # JVM启动参数
           env:
             - name: JAVA_OPTS
