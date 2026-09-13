@@ -624,7 +624,7 @@ JVM 不再读取宿主机整机内存，而是**读取容器 cgroup 的内存限
 
 Prometheus 采集`jvm_metadata_space_used`，设置告警，元空间使用率超过 80% 提前预警，不用等到崩了才发现。
 
-### 生产环境replicas设置
+## 生产环境replicas设置
 **1、集群节点数量限制**
 
 副本数不能超过可用节点数。比如你集群只有 2 个 worker 节点，最多 2 副本做跨节点高可用。
@@ -657,24 +657,19 @@ strategy:
 - user-service：`replicas:2` + pod 反亲和
   后续上 HPA，minReplicas=2。
 
+## 发布回滚
+
+
+
 ## 补充说明
 
 3. 配置：把 SpringBoot 配置抽离到 ConfigMap/Secret，不要打包进镜像。
 
 5. 网关用的nodeport，生产是不是建议类似ingress，目前主流是ngf？
 
-6. 既然Jenkinsfile放在了项目根目录，还需要拷贝到Jenkins流水线吗？
-
-1. **模块级增量构建**
-   增加判断：只有对应微服务目录代码变更，才构建、推送、部署该服务；没改动直接跳过，节省构建资源。
-2. **流水线增加后置校验**
-   发布成功后，自动调用网关接口做简单冒烟测试，确认业务接口可访问，而不只是等 pod 就绪。
 3. **发布回滚能力**
    `kubectl rollout undo deployment/xxx`，流水线可以增加一键回滚 stage，发布异常时快速切回上一个稳定版本。
-4. **资源精细化管控**
-   你集群之前出现`Insufficient memory`，后续统一调整各微服务 requests/limits，避免节点内存不足导致 Pod 调度失败。
-5. **日志与监控接入**
-   Pod 日志已经输出到 stdout，可以接入 EFK；actuator 健康指标后续对接 Prometheus+Grafana 监控。
+
 
 ###  kaniko工作目录的两种写法
 ```text

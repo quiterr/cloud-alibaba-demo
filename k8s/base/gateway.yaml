@@ -26,7 +26,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: gateway
-          image: 192.168.133.129:30002/spring_cloud_demo/gateway:placeholder
+          image: gateway
           ports:
             - containerPort: 8080
           resources:
