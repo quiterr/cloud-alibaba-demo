@@ -748,6 +748,28 @@ Liveness探针达到failureThreshold次数后就会重启pod，而Readiness不�
 
 **探针检查并不是根因，根因是内存不够，后面把gateway副本改成1就正常了。**
 
+## 清理命令
+
+```shell
+# 删除3个Deployment：gateway、user-service、order-service
+kubectl delete deployment gateway user-service order-service -n default
+
+# 删除对应的Service（存在才删，不存在提示NotFound忽略即可）
+kubectl delete service gateway user-service order-service -n default
+
+# 删除configmap（如果这几个服务有单独cm，没有就忽略报错）
+kubectl delete configmap gateway user-service order-service -n default
+
+# 删除hpa（如果配置了弹性伸缩，没有就忽略）
+kubectl delete hpa gateway user-service order-service -n default
+
+# 清理残留Pod（兜底）
+kubectl get pods -n default | grep -E "gateway|user-service|order-service" | awk '{print $1}' | xargs kubectl delete pod -n default
+
+# 查看确认
+kubectl get deploy,pod,svc -n default
+```
+
 
 
 
