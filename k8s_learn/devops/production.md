@@ -486,6 +486,11 @@ kubectl apply -f rbac-jenkins-sa.yaml
 
 ## 测试微服务
 
+测试启动参数
+```shell
+
+```
+
 gateway已经设置了NodePort 30080，任意集群地址加30080都能访问。 浏览器输入
 ```shell
 http://192.168.133.129:30080/user-service/user/1
@@ -745,7 +750,14 @@ gateway-5ddf8f688c-ntm22           0/1     CrashLoopBackOff   7 (82s ago)      1
 ```
 
 Liveness探针达到failureThreshold次数后就会重启pod，而Readiness不会，失败后只是标记为未就绪，不让流量进来，Readiness会继续探测，一旦成功就会标记为就绪。
-
+```shell
+# 可以看到order和user重启次数都为1
+[root@k8s-node1 ~]# kubectl get pods
+NAME                             READY   STATUS    RESTARTS      AGE
+gateway-7fbd55567f-nkxds         1/1     Running   0             4m20s
+order-service-5df4496599-8nsv5   0/1     Running   1 (49s ago)   4m20s
+user-service-5d94d95757-7v754    0/1     Running   1 (69s ago)   4m20s
+```
 **探针检查并不是根因，根因是内存不够，后面把gateway副本改成1就正常了。**
 
 ## 清理命令
