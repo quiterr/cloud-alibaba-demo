@@ -41,7 +41,7 @@ metadata:
   name: gateway
   namespace: default
 spec:
-  replicas: 1
+  replicas: 1 # 修改：生产至少2副本
   selector:
     matchLabels:
       app: gateway
@@ -50,30 +50,47 @@ spec:
       labels:
         app: gateway
     spec:
+      # ========== 新增 Pod 反亲和性 ==========
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - gateway
+              topologyKey: kubernetes.io/hostname
       containers:
-      - name: gateway
-        image: 192.168.133.129:30002/spring_cloud_demo/gateway:v1
-        ports:
-        - containerPort: 8080
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "200m"
-          limits:
-            memory: "1Gi"
-            cpu: "1000m"
-        readinessProbe:
-          httpGet:
-            path: /actuator/health
-            port: 8080
-          initialDelaySeconds: 20
-          periodSeconds: 5
-        livenessProbe:
-          httpGet:
-            path: /actuator/health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
+        - name: gateway
+          image: gateway
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "400m"
+          # JVM启动参数
+          env:
+            - name: JAVA_OPTS
+              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=70.0 -XX:MaxMetaspaceSize=256m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
@@ -85,9 +102,30 @@ spec:
   selector:
     app: gateway
   ports:
-  - port: 80
-    targetPort: 8080
-    nodePort: 30080
+    - port: 80
+      targetPort: 8080
+      nodePort: 30080
+---
+# ========== 新增 HPA 自动扩缩容 ==========
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gateway
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gateway
+  minReplicas: 1  # 最小副本保底，和deployment初始副本保持一致
+  maxReplicas: 1  # 最大扩容上限，3节点集群最多扩到4个
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
 ```
 
 user-service.yaml
@@ -108,29 +146,35 @@ spec:
         app: user-service
     spec:
       containers:
-      - name: user-service
-        image: 192.168.133.129:30002/spring_cloud_demo/user-service:v1
-        ports:
-        - containerPort: 8081
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "200m"
-          limits:
-            memory: "1Gi"
-            cpu: "1000m"
-        readinessProbe:
-          httpGet:
-            path: /actuator/health
-            port: 8081
-          initialDelaySeconds: 20
-          periodSeconds: 5
-        livenessProbe:
-          httpGet:
-            path: /actuator/health
-            port: 8081
-          initialDelaySeconds: 30
-          periodSeconds: 10
+        - name: user-service
+          image: user-service
+          ports:
+            - containerPort: 8081
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "400m"
+          # JVM启动参数
+          env:
+            - name: JAVA_OPTS
+              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=70.0 -XX:MaxMetaspaceSize=256m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8081
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
@@ -142,8 +186,8 @@ spec:
   selector:
     app: user-service
   ports:
-  - port: 80
-    targetPort: 8081
+    - port: 80
+      targetPort: 8081
 ```
 
 order-service.yaml
@@ -164,29 +208,35 @@ spec:
         app: order-service
     spec:
       containers:
-      - name: order-service
-        image: 192.168.133.129:30002/spring_cloud_demo/order-service:v1
-        ports:
-        - containerPort: 8082
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "200m"
-          limits:
-            memory: "1Gi"
-            cpu: "1000m"
-        readinessProbe:
-          httpGet:
-            path: /actuator/health
-            port: 8082
-          initialDelaySeconds: 20
-          periodSeconds: 5
-        livenessProbe:
-          httpGet:
-            path: /actuator/health
-            port: 8082
-          initialDelaySeconds: 30
-          periodSeconds: 10
+        - name: order-service
+          image: order-service
+          ports:
+            - containerPort: 8082
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "400m"
+          # JVM启动参数
+          env:
+            - name: JAVA_OPTS
+              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=70.0 -XX:MaxMetaspaceSize=256m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
@@ -198,8 +248,8 @@ spec:
   selector:
     app: order-service
   ports:
-  - port: 80
-    targetPort: 8082
+    - port: 80
+      targetPort: 8082
 ```
 
 ## Jenkinsfile 流水线
@@ -221,7 +271,7 @@ spec:
     resources:
       limits:
         cpu: 2
-        memory: 2Gi
+        memory: 1Gi
   - name: maven
     image: maven:3.9.8-eclipse-temurin-17
     command: ['cat']
@@ -349,37 +399,37 @@ spec:
             steps {
                 container('kubectl') {
                     sh '''
-        # gateway
-        if kubectl get deployment gateway -n default >/dev/null 2>&1; then
-          echo "更新gateway镜像"
-          kubectl set image deployment/gateway gateway=192.168.133.129:30002/spring_cloud_demo/gateway:${GIT_SHORT_COMMIT} -n default
-        else
-          echo "首次部署，创建gateway资源"
-          sed "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/gateway.yaml | kubectl apply -f -
-        fi
+cat > k8s/overlays/dev/kustomization.yaml <<EOF
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+images:
+  - name: gateway
+    newName: 192.168.133.129:30002/spring_cloud_demo/gateway
+    newTag: ${GIT_SHORT_COMMIT}
+  - name: user-service
+    newName: 192.168.133.129:30002/spring_cloud_demo/user-service
+    newTag: ${GIT_SHORT_COMMIT}
+  - name: order-service
+    newName: 192.168.133.129:30002/spring_cloud_demo/order-service
+    newTag: ${GIT_SHORT_COMMIT}
+EOF
 
-        # user-service
-        if kubectl get deployment user-service -n default >/dev/null 2>&1; then
-          echo "更新user-service镜像"
-          kubectl set image deployment/user-service user-service=192.168.133.129:30002/spring_cloud_demo/user-service:${GIT_SHORT_COMMIT} -n default
-        else
-          echo "首次部署，创建user-service资源"
-          sed "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/user-service.yaml | kubectl apply -f -
-        fi
+# 打印渲染后的yaml，方便调试
+echo "=====kustomize渲染结果====="
+kubectl kustomize k8s/overlays/dev
 
-        # order-service
-        if kubectl get deployment order-service -n default >/dev/null 2>&1; then
-          echo "更新order-service镜像"
-          kubectl set image deployment/order-service order-service=192.168.133.129:30002/spring_cloud_demo/order-service:${GIT_SHORT_COMMIT} -n default
-        else
-          echo "首次部署，创建order-service资源"
-          sed "s#placeholder#${GIT_SHORT_COMMIT}#g" k8s/order-service.yaml | kubectl apply -f -
-        fi
+echo "=====开始apply，幂等，存在就更新全部配置，不存在就新建====="
+kubectl apply -k k8s/overlays/dev -n default
 
-        # 等待所有deployment滚动完成
-        kubectl rollout status deployment/gateway --timeout=300s -n default
-        kubectl rollout status deployment/user-service --timeout=300s -n default
-        kubectl rollout status deployment/order-service --timeout=300s -n default
+echo "=====查看deployment当前状态====="
+kubectl get deploy gateway -n default
+
+# 等待所有deployment滚动完成
+kubectl rollout status deployment/gateway --timeout=300s -n default
+kubectl rollout status deployment/user-service --timeout=300s -n default
+kubectl rollout status deployment/order-service --timeout=300s -n default
 
         '''
                 }
@@ -387,7 +437,6 @@ spec:
         }
     }
 }
-
 ```
 
 ## 项目目录
@@ -396,17 +445,22 @@ demo
 ├── gateway-server
 │   ├── Dockerfile
 │   └── src
-├── user-service
+├── user-service          
 │   ├── Dockerfile
 │   └── src
-├── order-service
+├── order-service         
 │   ├── Dockerfile
 │   └── src
 ├── k8s
-│   ├── gateway.yaml
-│   ├── user-service.yaml
-│   └── order-service.yaml
-├── Jenkinsfile
+│   ├── base
+│   │   ├── kustomization.yaml              
+│   │   ├── gateway.yaml
+│   │   ├── user-service.yaml
+│   │   └── order-service.yaml
+│   └── overlays
+│       └── dev           
+│           └── .gitkeep
+├── Jenkinsfile           
 ├── pom.xml
 └── README.md
 ```
