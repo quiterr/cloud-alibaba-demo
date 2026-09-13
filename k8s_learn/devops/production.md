@@ -657,10 +657,6 @@ strategy:
 - user-service：`replicas:2` + pod 反亲和
   后续上 HPA，minReplicas=2。
 
-## 发布回滚
-
-
-
 ## 补充说明
 
 1、配置：把 SpringBoot 配置抽离到 ConfigMap/Secret，不要打包进镜像。
