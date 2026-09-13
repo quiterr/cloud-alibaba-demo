@@ -746,6 +746,8 @@ gateway-5ddf8f688c-ntm22           0/1     CrashLoopBackOff   7 (82s ago)      1
 
 Liveness探针达到failureThreshold次数后就会重启pod，而Readiness不会，失败后只是标记为未就绪，不让流量进来，Readiness会继续探测，一旦成功就会标记为就绪。
 
+**探针检查并不是根因，根因是内存不够，后面把gateway副本改成1就正常了。**
+
 
 
 
